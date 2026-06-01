@@ -1,5 +1,5 @@
 # Use node as the base image
-FROM node:latest
+FROM node
 
 WORKDIR /app
 

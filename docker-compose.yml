@@ -5,29 +5,29 @@ services:
     build: ./backend
     container_name: oldtom_backend
     volumes:
-      - ./backend:/app
       - static_volume:/app/staticfiles
       - media_volume:/app/media
     env_file:
       - .env
     expose:
-      - "80"
+      - "8000"
     command: >
       sh -c "
       python manage.py migrate &&
       python manage.py collectstatic --noinput &&
       gunicorn core.wsgi:application --bind 0.0.0.0:8000
       "
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   frontend:
     build: ./frontend
     container_name: oldtom_frontend
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
     expose:
       - "5173"
-    command: npm run dev -- --host
     depends_on:
       - backend
 
@@ -41,8 +41,15 @@ services:
       - static_volume:/app/staticfiles
       - media_volume:/app/media
     depends_on:
-      - backend
-      - frontend
+      backend:
+        condition: service_started
+      frontend:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   static_volume:
