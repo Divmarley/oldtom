@@ -1,7 +1,20 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authService } from '../services/api';
 import { Lock, User, Mail, ArrowRight, ShieldCheck } from 'lucide-react';
+
+const getThrottleMessage = (error) => {
+  const retryAfter = Number(error.response?.headers?.['retry-after']);
+  if (!Number.isFinite(retryAfter) || retryAfter <= 0) {
+    return 'Too many registration attempts. Please wait a moment and try again.';
+  }
+
+  if (retryAfter < 60) {
+    return `Too many registration attempts. Try again in ${Math.ceil(retryAfter)} seconds.`;
+  }
+
+  return `Too many registration attempts. Try again in about ${Math.ceil(retryAfter / 60)} minutes.`;
+};
 
 const Register = () => {
   const navigate = useNavigate();
@@ -29,9 +42,24 @@ const Register = () => {
         email: formData.email,
         password: formData.password,
       });
-      navigate('/login');
+      navigate('/login', {
+        state: {
+          registrationComplete: true,
+          registeredEmail: formData.email,
+        },
+      });
     } catch (err) {
-      setError(err.response?.data?.username?.[0] || 'Registration failed. Please try again.');
+      if (err.response?.status === 429) {
+        setError(getThrottleMessage(err));
+        return;
+      }
+
+      setError(
+        err.response?.data?.username?.[0] ||
+          err.response?.data?.email?.[0] ||
+          err.response?.data?.detail ||
+          'Registration failed. Please try again.',
+      );
     } finally {
       setLoading(false);
     }
@@ -50,7 +78,9 @@ const Register = () => {
           </div>
 
           {error && (
-            <div className="bg-red-50 text-red-600 p-4 rounded-xl mb-6 text-sm font-medium border border-red-100">
+            <div
+              role="alert"
+              className="bg-red-50 text-red-600 p-4 rounded-xl mb-6 text-sm font-medium border border-red-100">
               {error}
             </div>
           )}

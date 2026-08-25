@@ -13,8 +13,32 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 import os
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+def env_bool(name, default=False):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def env_list(name, default=''):
+    return [value.strip() for value in os.getenv(name, default).split(',') if value.strip()]
+
+
+def env_origins(name):
+    """Read URL origins while remaining compatible with legacy host-only values."""
+    origins = []
+    for value in env_list(name):
+        if '://' in value:
+            origins.append(value)
+        else:
+            origins.extend((f'http://{value}', f'https://{value}'))
+    return origins
 
 
 # Quick-start development settings - unsuitable for production
@@ -24,9 +48,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-b$uxpp*b_x22ofq7h^^%@ghfqh!mjdjwb01#q0$ndeupx0_^3+'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env_bool('DEBUG', True)
+SECRET_KEY = os.getenv('SECRET_KEY', SECRET_KEY)
+if not DEBUG and not os.getenv('SECRET_KEY'):
+    raise ImproperlyConfigured('SECRET_KEY is required when DEBUG is false.')
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = env_list(
+    'ALLOWED_HOSTS',
+    'localhost,127.0.0.1' if DEBUG else '',
+)
+if not DEBUG and not ALLOWED_HOSTS:
+    raise ImproperlyConfigured('ALLOWED_HOSTS is required when DEBUG is false.')
 
 
 # Application definition
@@ -79,12 +111,35 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
+DB_NAME = os.getenv('DB_NAME', 'oldtom')
+DB_USER = os.getenv('DB_USER', 'oldtom_user')
+DB_PASSWORD = os.getenv('DB_PASSWORD', 'oldtom_pass')
+DB_HOST = os.getenv('DB_HOST', '127.0.0.1')
+DB_PORT = os.getenv('DB_PORT', '3306')
+USE_SQLITE_FALLBACK = os.getenv('USE_SQLITE_FALLBACK', 'true').lower() in {'1', 'true', 'yes', 'on'}
+
+# Prefer MySQL when the driver is available and the environment is configured for it,
+# but fall back to SQLite so the app still starts in local/dev environments where
+# MySQL client libraries are not installed yet.
+try:
+    import MySQLdb  # noqa: F401
+    HAS_MYSQL = True
+except Exception:
+    HAS_MYSQL = False
+
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': DB_NAME,
+        'USER': DB_USER,
+        'PASSWORD': DB_PASSWORD,
+        'HOST': DB_HOST,
+        'PORT': DB_PORT
+
     }
 }
+
 
 
 # Password validation
@@ -121,20 +176,103 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = env_bool('CORS_ALLOW_ALL_ORIGINS', DEBUG)
+CORS_ALLOWED_ORIGINS = env_origins('CORS_ALLOWED_ORIGINS')
+CSRF_TRUSTED_ORIGINS = env_origins('CSRF_TRUSTED_ORIGINS')
+
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SESSION_COOKIE_SECURE = env_bool('SESSION_COOKIE_SECURE', not DEBUG)
+CSRF_COOKIE_SECURE = env_bool('CSRF_COOKIE_SECURE', not DEBUG)
+SECURE_SSL_REDIRECT = env_bool('SECURE_SSL_REDIRECT', False)
+SECURE_HSTS_SECONDS = int(os.getenv('SECURE_HSTS_SECONDS', '0'))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool(
+    'SECURE_HSTS_INCLUDE_SUBDOMAINS',
+    False,
+)
+SECURE_HSTS_PRELOAD = env_bool('SECURE_HSTS_PRELOAD', False)
+
+
+# Email defaults to the console locally. Production should select Django's SMTP
+# backend and supply credentials through the server environment or secret store.
+EMAIL_BACKEND = os.getenv(
+    'EMAIL_BACKEND',
+    'django.core.mail.backends.console.EmailBackend',
+)
+EMAIL_HOST = os.getenv('EMAIL_HOST', '').strip()
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+EMAIL_USE_TLS = env_bool('EMAIL_USE_TLS', True)
+EMAIL_USE_SSL = env_bool('EMAIL_USE_SSL', False)
+EMAIL_TIMEOUT = int(os.getenv('EMAIL_TIMEOUT', '10'))
+
+if EMAIL_USE_TLS and EMAIL_USE_SSL:
+    raise ImproperlyConfigured('EMAIL_USE_TLS and EMAIL_USE_SSL cannot both be enabled.')
+
+if EMAIL_HOST and ('@' in EMAIL_HOST or '://' in EMAIL_HOST):
+    raise ImproperlyConfigured(
+        'EMAIL_HOST must be an SMTP hostname such as smtp.gmail.com, '
+        'not an email address or URL.'
+    )
+
+if not DEBUG and EMAIL_BACKEND == 'django.core.mail.backends.smtp.EmailBackend':
+    missing_email_settings = [
+        name
+        for name, value in {
+            'EMAIL_HOST': EMAIL_HOST,
+            'EMAIL_HOST_USER': EMAIL_HOST_USER,
+            'EMAIL_HOST_PASSWORD': EMAIL_HOST_PASSWORD,
+        }.items()
+        if not value
+    ]
+    if missing_email_settings:
+        raise ImproperlyConfigured(
+            f"Missing production email settings: {', '.join(missing_email_settings)}"
+        )
+
+DEFAULT_FROM_EMAIL = os.getenv(
+    'DEFAULT_FROM_EMAIL',
+    EMAIL_HOST_USER or 'Old Toms <noreply@localhost>',
+)
+SERVER_EMAIL = os.getenv('SERVER_EMAIL', DEFAULT_FROM_EMAIL)
+EMAIL_REPLY_TO = os.getenv('EMAIL_REPLY_TO', '')
+EMAIL_SUPPORT_ADDRESS = os.getenv('EMAIL_SUPPORT_ADDRESS', 'info@oldtoms.com')
+SITE_NAME = os.getenv('SITE_NAME', 'Old Toms – Class of 2016')
+SITE_URL = os.getenv('SITE_URL', 'http://localhost').rstrip('/')
+EMAIL_LOGO_URL = os.getenv('EMAIL_LOGO_URL', f'{SITE_URL}/logo.jpg')
+LOGIN_EMAIL_NOTIFICATIONS = env_bool('LOGIN_EMAIL_NOTIFICATIONS', True)
+WELCOME_EMAIL_NOTIFICATIONS = env_bool('WELCOME_EMAIL_NOTIFICATIONS', True)
+
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'core.authentication.OptionalJWTAuthentication',
     ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated',
+    ),
+    # Nginx is the single trusted proxy in the standard deployment. Set this to
+    # 2 when an external load balancer/CDN sits in front of Nginx.
+    'NUM_PROXIES': int(os.getenv('TRUSTED_PROXY_COUNT', '1')),
+    'DEFAULT_THROTTLE_RATES': {
+        'event_registration': os.getenv(
+            'EVENT_REGISTRATION_THROTTLE_RATE',
+            '5/hour',
+        ),
+        'login': os.getenv('LOGIN_THROTTLE_RATE', '10/minute'),
+        'account_registration': os.getenv(
+            'ACCOUNT_REGISTRATION_THROTTLE_RATE',
+            '30/hour',
+        ),
+    },
 }
 
 from datetime import timedelta

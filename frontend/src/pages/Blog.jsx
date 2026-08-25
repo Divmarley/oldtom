@@ -53,7 +53,8 @@ const Blog = () => {
             </p>
           </div>
 
-          {isLoggedIn && (
+          {isLoggedIn &&  (
+            
             <Link
               to='/blog/create'
               className='bg-secondary text-primary px-8 py-4 rounded-2xl font-bold flex items-center gap-3 hover:bg-yellow-300 transition-all duration-300 shadow-xl hover:scale-105'

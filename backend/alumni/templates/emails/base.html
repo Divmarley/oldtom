@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}{{ site_name }}{% endblock %}</title>
+  </head>
+  <body style="margin:0;background:#f3f4f6;color:#1f2937;font-family:Arial,Helvetica,sans-serif;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+      {% block preheader %}{% endblock %}
+    </div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f3f4f6;padding:28px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 12px 35px rgba(0,51,102,.12);">
+            <tr>
+              <td align="center" style="background:#003366;padding:28px 24px 22px;">
+                {% if logo_url %}
+                  <img src="{{ logo_url }}" width="72" height="72" alt="{{ site_name }}" style="display:block;border-radius:50%;border:3px solid #FFD700;object-fit:cover;margin:0 auto 14px;">
+                {% endif %}
+                <div style="color:#ffffff;font-size:22px;font-weight:800;letter-spacing:.6px;">OLD TOMS</div>
+                <div style="color:#FFD700;font-size:12px;font-weight:700;letter-spacing:2px;margin-top:5px;">CLASS OF 2016</div>
+              </td>
+            </tr>
+            <tr><td style="height:6px;background:#FFD700;font-size:0;line-height:0;">&nbsp;</td></tr>
+            <tr>
+              <td style="padding:38px 38px 34px;">
+                {% block content %}{% endblock %}
+              </td>
+            </tr>
+            <tr>
+              <td align="center" style="background:#f8fafc;border-top:1px solid #e5e7eb;padding:24px 30px;color:#6b7280;font-size:12px;line-height:1.7;">
+                <strong style="color:#003366;">{{ site_name }}</strong><br>
+                Accra, Ghana &nbsp;&bull;&nbsp;
+                <a href="mailto:{{ support_email }}" style="color:#003366;text-decoration:none;">{{ support_email }}</a><br>
+                &copy; {{ current_year }} Old Toms. All rights reserved.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

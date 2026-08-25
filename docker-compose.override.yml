@@ -1,0 +1,12 @@
+# Automatically loaded by plain `docker compose` commands for local HTTP use.
+# Production deployment explicitly selects docker-compose.yml and
+# docker-compose.production.yml, so these development-only values are excluded.
+services:
+  backend:
+    environment:
+      SECURE_SSL_REDIRECT: 'false'
+      SESSION_COOKIE_SECURE: 'false'
+      CSRF_COOKIE_SECURE: 'false'
+      SECURE_HSTS_SECONDS: '0'
+      SECURE_HSTS_INCLUDE_SUBDOMAINS: 'false'
+      SECURE_HSTS_PRELOAD: 'false'

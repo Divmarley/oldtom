@@ -1,6 +1,6 @@
 /** @format */
 
-import React, { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { alumniService } from '../services/api';
 import {
   Search,
@@ -9,7 +9,6 @@ import {
   MapPin,
   Briefcase,
   Users,
-  Globe,
   Palette,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -71,20 +70,32 @@ const Directory = () => {
   );
 
   useEffect(() => {
-    fetchAlumni();
-  }, [searchTerm]);
+    const controller = new AbortController();
+    const loadAlumni = async () => {
+      setLoading(true);
+      try {
+        const response = await alumniService.getAll(searchTerm, {
+          signal: controller.signal,
+        });
+        setAlumni(response.data);
+      } catch (error) {
+        if (error.code !== 'ERR_CANCELED') {
+          console.error('Error fetching alumni:', error);
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    };
 
-  const fetchAlumni = async () => {
-    setLoading(true);
-    try {
-      const response = await alumniService.getAll(searchTerm);
-      setAlumni(response.data);
-    } catch (error) {
-      console.error('Error fetching alumni:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    const timer = window.setTimeout(() => {
+      void loadAlumni();
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [searchTerm]);
 
   const categories = [
     'All',
@@ -151,13 +162,13 @@ const Directory = () => {
           <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8'>
             {filteredAlumni.map((member) => (
               <div
-                key={member.id}
+                key={member?.id}
                 className='bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow border border-gray-100 flex flex-col'>
                 <div className='h-48 bg-gray-200 relative'>
-                  {member.photo ? (
+                  {member?.photo ? (
                     <img
-                      src={member.photo}
-                      alt={member.name}
+                      src={member?.photo}
+                      alt={member?.name}
                       className='w-full h-full object-cover'
                     />
                   ) : (
@@ -166,33 +177,33 @@ const Directory = () => {
                     </div>
                   )}
                   <div className='absolute top-4 right-4 bg-secondary text-primary px-3 py-1 rounded-full text-xs font-bold uppercase'>
-                    {member.category}
+                    {member?.category}
                   </div>
                 </div>
                 <div className='p-6 flex-grow flex flex-col'>
                   <h3 className='text-xl font-bold text-primary mb-1'>
-                    {member.name}
+                    {member?.name}
                   </h3>
                   <div className='flex items-center text-gray-600 mb-4 text-sm'>
                     <Briefcase className='h-4 w-4 mr-2' />
                     <span>
-                      {member.profession}{' '}
-                      {member.company ? `at ${member.company}` : ''}
+                      {member?.profession}{' '}
+                      {member?.company ? `at ${member?.company}` : ''}
                     </span>
                   </div>
                   <div className='flex items-center text-gray-500 mb-4 text-sm'>
                     <MapPin className='h-4 w-4 mr-2' />
-                    <span>{member.location}</span>
+                    <span>{member?.location}</span>
                   </div>
                   <p className='text-gray-600 text-sm mb-6 line-clamp-3 italic'>
-                    "{member.bio}"
+                    "{member?.bio}"
                   </p>
 
-                  {member.portfolio_url && (
+                  {member?.portfolio_url && (
                     <div className='mb-4 flex items-center gap-2 text-xs font-black text-secondary uppercase tracking-widest bg-secondary/5 p-3 rounded-xl border border-secondary/10'>
                       <Palette className='h-4 w-4' />
                       <a
-                        href={member.portfolio_url}
+                        href={member?.portfolio_url}
                         target='_blank'
                         rel='noopener noreferrer'
                         className='hover:underline'>
@@ -203,7 +214,7 @@ const Directory = () => {
 
                   <div className='mb-6'>
                     <div className='flex flex-wrap gap-2'>
-                      {member.skills.split(',').map((skill, index) => (
+                      {member?.skills?.split(',').map((skill, index) => (
                         <span
                           key={index}
                           className='bg-blue-50 text-primary text-[10px] px-2 py-1 rounded uppercase font-bold tracking-wider'>
@@ -215,40 +226,40 @@ const Directory = () => {
                   <div className='flex items-center justify-between pt-4 border-t border-gray-100 mt-auto'>
                     <div className='flex items-center space-x-3'>
                       <a
-                        href={`mailto:${member.email}`}
+                        href={`mailto:${member?.email}`}
                         className='text-gray-400 hover:text-red-500 transition-colors'>
                         <Mail className='h-4 w-4' />
                       </a>
-                      {member.facebook && (
+                      {member?.facebook && (
                         <a
-                          href={member.facebook}
+                          href={member?.facebook}
                           target='_blank'
                           rel='noopener noreferrer'
                           className='text-gray-400 hover:text-blue-600 transition-colors'>
                           <FacebookIcon />
                         </a>
                       )}
-                      {member.instagram && (
+                      {member?.instagram && (
                         <a
-                          href={member.instagram}
+                          href={member?.instagram}
                           target='_blank'
                           rel='noopener noreferrer'
                           className='text-gray-400 hover:text-pink-600 transition-colors'>
                           <InstagramIcon />
                         </a>
                       )}
-                      {member.twitter && (
+                      {member?.twitter && (
                         <a
-                          href={member.twitter}
+                          href={member?.twitter}
                           target='_blank'
                           rel='noopener noreferrer'
                           className='text-gray-400 hover:text-black transition-colors'>
                           <XIcon />
                         </a>
                       )}
-                      {member.linkedin && (
+                      {member?.linkedin && (
                         <a
-                          href={member.linkedin}
+                          href={member?.linkedin}
                           target='_blank'
                           rel='noopener noreferrer'
                           className='text-gray-400 hover:text-blue-700 transition-colors'>
@@ -257,7 +268,7 @@ const Directory = () => {
                       )}
                     </div>
                     <Link
-                      to={`/alumni/${member.id}`}
+                      to={`/alumni/${member?.id}`}
                       className='text-primary font-bold text-xs hover:text-secondary transition-colors uppercase tracking-widest'>
                       View Details
                     </Link>

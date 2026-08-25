@@ -1,0 +1,31 @@
+[
+  {
+    "model": "alumni.product",
+    "pk": 1,
+    "fields": {
+      "title": "Old Toms Class of 2016 T-Shirt",
+      "slug": "old-toms-tshirt",
+      "description": "Official Old Toms 2016 T-shirt. 100% cotton. Available in multiple sizes.",
+      "price": "60.00",
+      "stock": 100
+    }
+  },
+  {
+    "model": "alumni.shippingoption",
+    "pk": 1,
+    "fields": {
+      "name": "Pickup - Main Campus",
+      "price": "0.00",
+      "is_pickup": true
+    }
+  },
+  {
+    "model": "alumni.shippingoption",
+    "pk": 2,
+    "fields": {
+      "name": "Standard Delivery",
+      "price": "15.00",
+      "is_pickup": false
+    }
+  }
+]

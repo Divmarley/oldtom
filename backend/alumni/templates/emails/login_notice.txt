@@ -1,0 +1,14 @@
+Hello {{ recipient_name }},
+
+A successful sign-in to your Old Toms account was recorded.
+
+Account: {{ username }}
+Time: {{ login_time|date:"l, F j, Y, g:i A T" }}
+IP address: {{ ip_address }}
+Browser/device: {{ user_agent }}
+
+If this was not you, secure your account immediately and contact {{ support_email }}.
+
+Review your account: {{ account_url }}
+
+{{ site_name }}

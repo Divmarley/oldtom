@@ -1,8 +1,8 @@
 /** @format */
 
-import React, { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { eventService } from '../services/api';
+import { authService, eventService } from '../services/api';
 import {
   Calendar,
   MapPin,
@@ -18,6 +18,7 @@ const Events = () => {
   const navigate = useNavigate();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
   const [formData, setFormData] = useState({
@@ -27,11 +28,7 @@ const Events = () => {
     description: '',
   });
 
-  useEffect(() => {
-    fetchEvents();
-  }, []);
-
-  const fetchEvents = async () => {
+  const fetchEvents = useCallback(async () => {
     try {
       const response = await eventService.getAll();
       setEvents(response.data);
@@ -40,7 +37,32 @@ const Events = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const loadEvents = async () => {
+      await fetchEvents();
+    };
+
+    void loadEvents();
+
+    if (!localStorage.getItem('access_token')) return undefined;
+
+    let active = true;
+    const fetchPermissions = async () => {
+      try {
+        const response = await authService.getCurrentUser();
+        if (active) setIsAdmin(response.data.is_staff === true);
+      } catch {
+        if (active) setIsAdmin(false);
+      }
+    };
+
+    void fetchPermissions();
+    return () => {
+      active = false;
+    };
+  }, [fetchEvents]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -93,20 +115,24 @@ const Events = () => {
             Stay updated with reunions, meetings, and special events designed
             for our alumni.
           </p>
-          <button
-            onClick={() => {
-              setEditingEvent(null);
-              setFormData({
-                title: '',
-                location: '',
-                date: '',
-                description: '',
-              });
-              setShowModal(true);
-            }}
-            className='bg-secondary text-primary px-6 py-3 rounded-full font-bold flex items-center mx-auto hover:bg-yellow-400 transition-all shadow-lg'>
-            <Plus className='mr-2 h-5 w-5' /> Create New Event
-          </button>
+
+          {isAdmin && (
+            <button
+              type='button'
+              onClick={() => {
+                setEditingEvent(null);
+                setFormData({
+                  title: '',
+                  location: '',
+                  date: '',
+                  description: '',
+                });
+                setShowModal(true);
+              }}
+              className='bg-secondary text-primary px-6 py-3 rounded-full font-bold flex items-center mx-auto hover:bg-yellow-400 transition-all shadow-lg'>
+              <Plus className='mr-2 h-5 w-5' /> Create New Event
+            </button>
+          )}
         </div>
       </div>
 
@@ -137,18 +163,22 @@ const Events = () => {
                   </div>
                   <div className='p-8 md:w-3/4 flex flex-col justify-center relative'>
                     {/* Admin Actions */}
-                    <div className='absolute top-4 right-4 flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity'>
-                      <button
-                        onClick={() => handleEdit(event)}
-                        className='p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-primary hover:text-white transition-all'>
-                        <Edit2 className='h-4 w-4' />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(event.id)}
-                        className='p-2 bg-gray-100 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all'>
-                        <Trash2 className='h-4 w-4' />
-                      </button>
-                    </div>
+                    {isAdmin && (
+                      <div className='absolute top-4 right-4 flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity'>
+                        <button
+                          type='button'
+                          onClick={() => handleEdit(event)}
+                          className='p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-primary hover:text-white transition-all'>
+                          <Edit2 className='h-4 w-4' />
+                        </button>
+                        <button
+                          type='button'
+                          onClick={() => handleDelete(event.id)}
+                          className='p-2 bg-gray-100 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all'>
+                          <Trash2 className='h-4 w-4' />
+                        </button>
+                      </div>
+                    )}
 
                     <h2 className='text-2xl font-bold text-primary mb-4'>
                       {event.title}

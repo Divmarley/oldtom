@@ -25,6 +25,11 @@ import Projects from './pages/Projects';
 import Donations from './pages/Donations';
 import Contact from './pages/Contact';
 import ProjectDetail from './pages/ProjectDetail';
+import Store from './pages/Store';
+import ProductDetail from './pages/ProductDetail';
+import Cart from './pages/Cart';
+import Checkout from './pages/Checkout';
+import OrderSuccess from './pages/OrderSuccess';
 
 function App() {
   return (
@@ -41,7 +46,7 @@ function App() {
             <Route path='/yearbook' element={<Yearbook />} />
             <Route path='/events' element={<Events />} />
             <Route
-              path='/events/register/:eventId'
+              path='/events/register/:name'
               element={<EventRegistration />}
             />
             <Route path='/join' element={<Join />} />
@@ -60,6 +65,11 @@ function App() {
             <Route path='/login' element={<Login />} />
             <Route path='/register' element={<Register />} />
             <Route path='/profile' element={<Profile />} />
+            <Route path='/store' element={<Store />} />
+            <Route path='/store/:id' element={<ProductDetail />} />
+            <Route path='/cart' element={<Cart />} />
+            <Route path='/checkout' element={<Checkout />} />
+            <Route path='/order-success/:id' element={<OrderSuccess />} />
           </Routes>
         </main>
         <AIChatBot />

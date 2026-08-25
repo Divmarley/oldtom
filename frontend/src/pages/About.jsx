@@ -1,5 +1,5 @@
 import React from 'react';
-import { Target, Eye, Heart, Shield, TrendingUp, Users } from 'lucide-react';
+import { Target, Heart, Shield, TrendingUp, Users } from 'lucide-react';
 
 const About = () => {
   const values = [

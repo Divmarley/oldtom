@@ -1,0 +1,42 @@
+{% extends "emails/base.html" %}
+
+{% block title %}Welcome to {{ site_name }}{% endblock %}
+{% block preheader %}Your Old Toms account is ready. Complete your alumni profile and reconnect with the class.{% endblock %}
+
+{% block content %}
+  <p style="margin:0 0 10px;color:#6b7280;font-size:14px;">Hello {{ recipient_name }},</p>
+  <h1 style="margin:0 0 18px;color:#003366;font-size:30px;line-height:1.2;">Welcome to the Old Toms network</h1>
+  <p style="margin:0 0 8px;color:#4b5563;font-size:16px;line-height:1.7;">Your account has been created successfully. You are now part of a community built on friendship, shared history, and lasting impact.</p>
+  <p style="margin:0 0 26px;color:#003366;font-size:14px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Brotherhood. Legacy. Impact.</p>
+
+  {% if not profile_complete %}
+    <div style="background:#fffbea;border:1px solid #fde68a;border-left:5px solid #FFD700;border-radius:12px;padding:20px 22px;margin:0 0 26px;color:#713f12;font-size:14px;line-height:1.7;">
+      <div style="color:#003366;font-size:17px;font-weight:800;margin-bottom:7px;">Complete your alumni profile</div>
+      Add your details so classmates can recognise you, discover your work, and connect with you.
+      {% if missing_profile_fields %}
+        <div style="margin-top:10px;"><strong>Still needed:</strong> {{ missing_profile_fields|join:", "|capfirst }}.</div>
+      {% endif %}
+    </div>
+  {% else %}
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-left:5px solid #15803d;border-radius:12px;padding:20px 22px;margin:0 0 26px;color:#166534;font-size:14px;line-height:1.7;">
+      <strong>Your alumni profile is ready.</strong> Visit it any time to keep your details current.
+    </div>
+  {% endif %}
+
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;margin:0 0 28px;">
+    <tr>
+      <td style="padding:20px 22px;color:#4b5563;font-size:14px;line-height:1.8;">
+        <strong style="color:#003366;">Your account:</strong> {{ username }}<br>
+        <strong style="color:#003366;">Connect:</strong> Find classmates in the alumni directory<br>
+        <strong style="color:#003366;">Participate:</strong> Discover events, projects, and community news
+      </td>
+    </tr>
+  </table>
+
+  <div style="text-align:center;margin:30px 0 18px;">
+    <a href="{{ profile_url }}" style="display:inline-block;background:#003366;color:#ffffff;text-decoration:none;border-radius:999px;padding:15px 28px;font-size:14px;font-weight:700;">{% if profile_complete %}View your profile{% else %}Complete your profile{% endif %}</a>
+  </div>
+  <p style="margin:0;text-align:center;color:#6b7280;font-size:12px;line-height:1.6;">
+    You can also <a href="{{ directory_url }}" style="color:#003366;font-weight:700;">browse the directory</a> or <a href="{{ events_url }}" style="color:#003366;font-weight:700;">explore upcoming events</a>.
+  </p>
+{% endblock %}

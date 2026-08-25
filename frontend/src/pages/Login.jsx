@@ -1,10 +1,17 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useState } from 'react';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { authService } from '../services/api';
-import { Lock, User, ArrowRight, ShieldCheck } from 'lucide-react';
+import {
+  CheckCircle,
+  Lock,
+  User,
+  ArrowRight,
+  ShieldCheck,
+} from 'lucide-react';
 
 const Login = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -20,8 +27,13 @@ const Login = () => {
       const response = await authService.login(formData);
       localStorage.setItem('access_token', response.data.access);
       localStorage.setItem('refresh_token', response.data.refresh);
-      navigate('/profile');
-    } catch (err) {
+      const requestedPath = new URLSearchParams(location.search).get('next');
+      const nextPath =
+        requestedPath?.startsWith('/') && !requestedPath.startsWith('//')
+          ? requestedPath
+          : '/profile';
+      navigate(nextPath, { replace: true });
+    } catch {
       setError('Invalid username or password. Please try again.');
     } finally {
       setLoading(false);
@@ -36,13 +48,24 @@ const Login = () => {
             <div className="bg-primary/10 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6">
               <ShieldCheck className="h-10 w-10 text-primary" />
             </div>
-            <h1 className="text-3xl font-black text-primary uppercase tracking-tight">Admin Login</h1>
+            <h1 className="text-3xl font-black text-primary uppercase tracking-tight">Member Login</h1>
             <p className="text-gray-500 mt-2">Access your Old Toms profile</p>
           </div>
 
           {error && (
             <div className="bg-red-50 text-red-600 p-4 rounded-xl mb-6 text-sm font-medium border border-red-100">
               {error}
+            </div>
+          )}
+
+          {location.state?.registrationComplete && (
+            <div className="bg-green-50 text-green-700 p-4 rounded-xl mb-6 text-sm font-medium border border-green-100 flex items-start gap-3">
+              <CheckCircle className="h-5 w-5 shrink-0 mt-0.5" />
+              <span>
+                Welcome! Your account is ready. A welcome message is on its way to{' '}
+                <strong>{location.state.registeredEmail}</strong>. Sign in to
+                complete your alumni profile.
+              </span>
             </div>
           )}
 

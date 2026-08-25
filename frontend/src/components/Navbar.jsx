@@ -1,22 +1,134 @@
 /** @format */
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, GraduationCap, User, ChevronDown } from 'lucide-react';
+import {
+  AlertCircle,
+  ArrowRight,
+  Menu,
+  X,
+  User,
+  ChevronDown,
+} from 'lucide-react';
+import { authService } from '../services/api';
+
+const profileFieldLabels = {
+  name: 'full name',
+  email: 'email address',
+  profession: 'profession',
+  location: 'location',
+  bio: 'short bio',
+};
+
+const getIncompleteProfile = (profile) => {
+  const missingFields = profile.missing_profile_fields ??
+    Object.keys(profileFieldLabels).filter(
+      (field) => !String(profile[field] ?? '').trim(),
+    );
+
+  const isComplete = profile.profile_complete ?? missingFields.length === 0;
+  if (isComplete) return null;
+
+  return {
+    percentage: profile.profile_completion_percentage ?? 0,
+    missingFields,
+  };
+};
+
+const FacebookIcon = () => (
+  <svg
+    width='20'
+    height='20'
+    viewBox='0 0 24 24'
+    fill='none'
+    stroke='currentColor'
+    strokeWidth='2'
+    strokeLinecap='round'
+    strokeLinejoin='round'>
+    <path d='M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z' />
+  </svg>
+);
+
+const InstagramIcon = () => (
+  <svg
+    width='20'
+    height='20'
+    viewBox='0 0 24 24'
+    fill='none'
+    stroke='currentColor'
+    strokeWidth='2'
+    strokeLinecap='round'
+    strokeLinejoin='round'>
+    <rect x='2' y='2' width='20' height='20' rx='5' ry='5' />
+    <path d='M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z' />
+    <line x1='17.5' y1='6.5' x2='17.51' y2='6.5' />
+  </svg>
+);
+
+const XIcon = () => (
+  <svg width='18' height='18' viewBox='0 0 24 24' fill='currentColor'>
+    <path d='M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z' />
+  </svg>
+);
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [incompleteProfile, setIncompleteProfile] = useState(null);
+  const [authRejected, setAuthRejected] = useState(false);
   const location = useLocation();
+  const isLoggedIn = Boolean(localStorage.getItem('access_token')) && !authRejected;
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
-    setIsLoggedIn(!!token);
-  }, [location]);
+    let cancelled = false;
+
+    if (!token) {
+      return undefined;
+    }
+
+    const fetchProfileStatus = async () => {
+      try {
+        const response = await authService.getProfile();
+        if (!cancelled) {
+          setAuthRejected(false);
+          setIncompleteProfile(getIncompleteProfile(response.data));
+        }
+      } catch (error) {
+        if (!cancelled) {
+          if (error.response?.status === 401) {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
+            localStorage.removeItem('user_id');
+            setAuthRejected(true);
+          }
+          setIncompleteProfile(null);
+        }
+      }
+    };
+
+    void fetchProfileStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    const handleProfileUpdated = (event) => {
+      if (event.detail) {
+        setIncompleteProfile(getIncompleteProfile(event.detail));
+      }
+    };
+
+    window.addEventListener('alumni-profile-updated', handleProfileUpdated);
+    return () => {
+      window.removeEventListener('alumni-profile-updated', handleProfileUpdated);
+    };
+  }, []);
 
   const mainLinks = [
     { name: 'Home', path: '/' },
+    { name: 'Store', path: '/store' },
     { name: 'About', path: '/about' },
     { name: 'Alumni', path: '/alumni' },
     { name: 'Blog', path: '/blog' },
@@ -31,160 +143,17 @@ const Navbar = () => {
     { name: 'Contact', path: '/contact' },
   ];
 
-  // Custom SVG icons for social brands
-  const FacebookIcon = () => (
-    <svg
-      width='20'
-      height='20'
-      viewBox='0 0 24 24'
-      fill='none'
-      stroke='currentColor'
-      strokeWidth='2'
-      strokeLinecap='round'
-      strokeLinejoin='round'>
-      <path d='M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z' />
-    </svg>
-  );
-  const InstagramIcon = () => (
-    <svg
-      width='20'
-      height='20'
-      viewBox='0 0 24 24'
-      fill='none'
-      stroke='currentColor'
-      strokeWidth='2'
-      strokeLinecap='round'
-      strokeLinejoin='round'>
-      <rect x='2' y='2' width='20' height='20' rx='5' ry='5' />
-      <path d='M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z' />
-      <line x1='17.5' y1='6.5' x2='17.51' y2='6.5' />
-    </svg>
-  );
-  const XIcon = () => (
-    <svg width='18' height='18' viewBox='0 0 24 24' fill='currentColor'>
-      <path d='M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z' />
-    </svg>
-  );
-
-  const OldTomsLogo = () => (
-    <svg
-      width='40'
-      height='40'
-      viewBox='0 0 200 240'
-      fill='none'
-      xmlns='http://www.w3.org/2000/svg'
-      className='text-secondary'>
-      {/* Shield Outline */}
-      <path
-        d='M40 20H160V110C160 160 130 195 100 215C70 195 40 160 40 110V20Z'
-        stroke='currentColor'
-        strokeWidth='8'
-        strokeLinejoin='round'
-      />
-
-      {/* Top Divider */}
-      <line
-        x1='40'
-        y1='60'
-        x2='160'
-        y2='60'
-        stroke='currentColor'
-        strokeWidth='6'
-      />
-
-      {/* Book */}
-      <path d='M60 35H90V55H60Z' stroke='currentColor' strokeWidth='5' />
-
-      {/* Lamp */}
-      <path
-        d='M125 38C118 38 114 42 114 48H136C136 42 132 38 125 38Z'
-        stroke='currentColor'
-        strokeWidth='5'
-        strokeLinecap='round'
-        strokeLinejoin='round'
-      />
-      <line
-        x1='125'
-        y1='48'
-        x2='125'
-        y2='58'
-        stroke='currentColor'
-        strokeWidth='5'
-      />
-
-      {/* Center Circle */}
-      <circle cx='100' cy='95' r='22' stroke='currentColor' strokeWidth='6' />
-
-      {/* Rays */}
-      <line
-        x1='100'
-        y1='55'
-        x2='100'
-        y2='70'
-        stroke='currentColor'
-        strokeWidth='4'
-      />
-      <line
-        x1='70'
-        y1='95'
-        x2='85'
-        y2='95'
-        stroke='currentColor'
-        strokeWidth='4'
-      />
-      <line
-        x1='115'
-        y1='95'
-        x2='130'
-        y2='95'
-        stroke='currentColor'
-        strokeWidth='4'
-      />
-      <line
-        x1='80'
-        y1='75'
-        x2='90'
-        y2='85'
-        stroke='currentColor'
-        strokeWidth='4'
-      />
-      <line
-        x1='110'
-        y1='85'
-        x2='120'
-        y2='75'
-        stroke='currentColor'
-        strokeWidth='4'
-      />
-
-      {/* Bottom Animal Placeholder */}
-      <path
-        d='M70 150C85 140 115 140 130 150'
-        stroke='currentColor'
-        strokeWidth='6'
-        strokeLinecap='round'
-      />
-
-      {/* Ribbon */}
-      <path
-        d='M65 210H135'
-        stroke='currentColor'
-        strokeWidth='6'
-        strokeLinecap='round'
-      />
-    </svg>
-  );
-
   return (
     <nav className='bg-primary text-white sticky top-0 z-50 shadow-md'>
       <div className='max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'>
         <div className='flex items-center justify-between h-16'>
           <div className='flex items-center'>
             <Link to='/' className='flex items-center space-x-2'>
-              {/* <GraduationCap className='h-8 w-8 text-secondary' />
-               */}
-              {/* <OldTomsLogo /> */}
-              <img src='/logo.jpg' className="w-9 h-9 object-cover rounded-sm "/>
+              <img
+                src='/logo.jpg'
+                alt='Old Toms 2016'
+                className='w-9 h-9 object-cover rounded-sm '
+              />
               <span className='font-bold text-xl tracking-tight'>
                 OLD TOMS 2016
               </span>
@@ -271,11 +240,11 @@ const Navbar = () => {
                 </Link>
               )}
               {!isLoggedIn && (
-              <Link
-                to='/join'
-                className='bg-secondary text-primary hover:bg-yellow-400 px-5 py-2 rounded-xl text-sm font-black transition-all shadow-lg transform hover:-translate-y-0.5 active:translate-y-0 uppercase tracking-tight'>
-                Join
-              </Link>
+                <Link
+                  to='/join'
+                  className='bg-secondary text-primary hover:bg-yellow-400 px-5 py-2 rounded-xl text-sm font-black transition-all shadow-lg transform hover:-translate-y-0.5 active:translate-y-0 uppercase tracking-tight'>
+                  Join
+                </Link>
               )}
             </div>
           </div>
@@ -351,6 +320,33 @@ const Navbar = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {isLoggedIn && incompleteProfile && (
+        <Link
+          to='/profile?edit=1#profile-details'
+          onClick={() => setIsOpen(false)}
+          className='group block bg-secondary text-primary border-t border-yellow-300/70'>
+          <div className='max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2'>
+            <div className='flex items-start sm:items-center gap-3'>
+              <AlertCircle className='h-5 w-5 shrink-0 mt-0.5 sm:mt-0' />
+              <div>
+                <span className='font-black text-sm uppercase tracking-wide'>
+                  Complete your alumni profile
+                </span>
+                <span className='block sm:inline sm:ml-2 text-xs font-semibold text-primary/75'>
+                  {incompleteProfile.percentage}% complete · Add{' '}
+                  {incompleteProfile.missingFields
+                    .map((field) => profileFieldLabels[field] ?? field)
+                    .join(', ')}
+                </span>
+              </div>
+            </div>
+            <span className='inline-flex items-center gap-2 text-xs font-black uppercase tracking-widest group-hover:gap-3 transition-all'>
+              Complete now <ArrowRight className='h-4 w-4' />
+            </span>
+          </div>
+        </Link>
       )}
     </nav>
   );

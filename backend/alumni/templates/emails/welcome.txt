@@ -1,0 +1,21 @@
+Hello {{ recipient_name }},
+
+Welcome to the Old Toms network.
+
+Your account has been created successfully. You are now part of a community built on friendship, shared history, and lasting impact.
+
+Brotherhood. Legacy. Impact.
+
+{% if not profile_complete %}Your alumni profile still needs a few details. Complete it so classmates can recognise you, discover your work, and connect with you.
+{% if missing_profile_fields %}Still needed: {{ missing_profile_fields|join:", "|capfirst }}.
+{% endif %}
+Complete your profile: {{ profile_url }}
+{% else %}Your alumni profile is ready. View it here: {{ profile_url }}
+{% endif %}
+
+Browse the alumni directory: {{ directory_url }}
+Explore upcoming events: {{ events_url }}
+
+Questions? Contact {{ support_email }}.
+
+{{ site_name }}

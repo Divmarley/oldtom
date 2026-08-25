@@ -1,0 +1,20 @@
+Hello {{ registration.name }},
+
+{{ heading }}
+
+{{ intro }}
+
+Status: {{ status_label }}
+Event: {{ event.title }}
+Date: {{ event.date|date:"l, F j, Y" }}
+Time: {{ event.date|time:"g:i A T" }}
+Location: {{ event.location }}
+Registration reference: {{ registration_reference }}
+
+{% if registration.status == 'approved' %}Please keep this official invitation and present it during check-in. We recommend arriving 15 minutes before the event begins.
+
+{% endif %}Event details: {{ event_url }}
+
+Questions? Contact {{ support_email }}.
+
+{{ site_name }}

@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 
 const EventRegistration = () => {
-  const { eventId } = useParams();
+  const { name } = useParams();
   const navigate = useNavigate();
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -33,7 +33,19 @@ const EventRegistration = () => {
   useEffect(() => {
     const fetchEvent = async () => {
       try {
-        const response = await eventService.getById(eventId);
+        const normalizedValue = String(name || '').trim();
+        let response;
+
+        if (!normalizedValue) {
+          throw new Error('Event reference is missing');
+        }
+
+        if (/^\d+$/.test(normalizedValue)) {
+          response = await eventService.getById(normalizedValue);
+        } else {
+          response = await eventService.getByName(normalizedValue);
+        }
+
         setEvent(response.data);
       } catch (error) {
         console.error('Error fetching event:', error);
@@ -42,7 +54,7 @@ const EventRegistration = () => {
       }
     };
     fetchEvent();
-  }, [eventId]);
+  }, [name]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -55,7 +67,7 @@ const EventRegistration = () => {
       // Ensure event ID is a number
       const registrationData = {
         ...formData,
-        event: parseInt(eventId),
+        event: parseInt(event.id, 10),
       };
 
       await eventService.register(registrationData);
@@ -109,7 +121,9 @@ const EventRegistration = () => {
           </h2>
           <p className='text-gray-600 mb-8'>
             Thank you for registering for <strong>{event.title}</strong>. We've
-            received your details and look forward to seeing you there!
+            received your details and sent a confirmation to your email. Your
+            registration is pending review; once approved, you will receive an
+            official invitation with the event details.
           </p>
           <button
             onClick={() => navigate('/events')}
