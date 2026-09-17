@@ -3,8 +3,9 @@ from rest_framework.fields import empty
 from decimal import Decimal
 from django.contrib.auth.models import User
 from django.db import transaction
+from django.utils import timezone
 from django.utils.text import slugify
-from .models import Alumni, Event, ContactMessage, YearbookEntry, EventRegistration, Donation, Project
+from .models import Alumni, Event, ContactMessage, YearbookEntry, EventRegistration, Donation, Project, School
 from .models import Product, Order, OrderItem, ShippingOption
 
 class UserSerializer(serializers.ModelSerializer):
@@ -134,7 +135,8 @@ class EventSerializer(serializers.ModelSerializer):
 class ContactMessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ContactMessage
-        fields = '__all__'
+        fields = ('id', 'name', 'email', 'message', 'created_at')
+        read_only_fields = ('id', 'created_at')
 
 class YearbookEntrySerializer(serializers.ModelSerializer):
     class Meta:
@@ -142,11 +144,23 @@ class YearbookEntrySerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ('alumni', 'is_badge')
 
+
+class SchoolSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = School
+        fields = ('id', 'name', 'kind')
+
+
 class EventRegistrationSerializer(serializers.ModelSerializer):
+    school_details = SchoolSerializer(source='school', read_only=True)
+
     class Meta:
         model = EventRegistration
         fields = '__all__'
         read_only_fields = (
+            'matched_roster_entry',
+            'roster_match_status',
+            'roster_matched_at',
             'registered_at',
             'updated_at',
             'status_changed_at',
@@ -158,8 +172,13 @@ class EventRegistrationSerializer(serializers.ModelSerializer):
         return value.strip().lower()
 
     def validate(self, attrs):
-        event = attrs.get('event') or getattr(self.instance, 'event', None)
-        email = attrs.get('email') or getattr(self.instance, 'email', '')
+        def submitted_value(field_name, fallback=None):
+            if field_name in attrs:
+                return attrs[field_name]
+            return getattr(self.instance, field_name, fallback)
+
+        event = submitted_value('event')
+        email = submitted_value('email', '')
         duplicate = EventRegistration.objects.filter(
             event=event,
             email__iexact=email,
@@ -169,7 +188,107 @@ class EventRegistrationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'email': 'This email is already registered for this event.'}
             )
+
+        attendee_type = submitted_value('attendee_type')
+        if self.instance is None and (
+            not attendee_type
+            or attendee_type == EventRegistration.AttendeeType.LEGACY
+        ):
+            raise serializers.ValidationError(
+                {'attendee_type': 'Choose how you are joining the celebration.'}
+            )
+
+        # Existing rows pre-date affiliation data. Staff can continue to update
+        # their status without fabricating a school or alumni claim.
+        if attendee_type == EventRegistration.AttendeeType.LEGACY:
+            return attrs
+
+        school = submitted_value('school')
+        other_school_name = (
+            submitted_value('other_school_name', '') or ''
+        ).strip()
+        batch_year = submitted_value('batch_year')
+        alumni_id = (submitted_value('alumni_id', '') or '').strip().upper()
+        attrs['other_school_name'] = other_school_name
+        if 'alumni_id' in attrs:
+            attrs['alumni_id'] = alumni_id or None
+
+        errors = {}
+        if attendee_type == EventRegistration.AttendeeType.OLD_STUDENT:
+            if not batch_year:
+                errors['batch_year'] = 'Select your year batch.'
+            elif batch_year < 1900 or batch_year > timezone.now().year:
+                errors['batch_year'] = 'Enter a valid year batch.'
+            if school:
+                errors['school'] = 'Old students do not need to select a school.'
+            if other_school_name:
+                errors['other_school_name'] = (
+                    'Old students do not need to enter another school.'
+                )
+        elif attendee_type == EventRegistration.AttendeeType.SISTER_SCHOOL:
+            if not school:
+                errors['school'] = 'Select your sister school.'
+            elif not school.is_active or school.kind != School.Kind.SISTER:
+                errors['school'] = 'Select an active sister school from the list.'
+            if batch_year:
+                errors['batch_year'] = (
+                    'A year batch is only required for old students.'
+                )
+            if other_school_name:
+                errors['other_school_name'] = (
+                    'Use the selected sister school instead of another school name.'
+                )
+            if alumni_id:
+                errors['alumni_id'] = 'An alumni ID is only used for old students.'
+        elif attendee_type == EventRegistration.AttendeeType.OTHER_SCHOOL:
+            if not other_school_name:
+                errors['other_school_name'] = 'Enter the name of your school.'
+            if school:
+                errors['school'] = (
+                    'Use the sister school option for a listed sister school.'
+                )
+            if batch_year:
+                errors['batch_year'] = (
+                    'A year batch is only required for old students.'
+                )
+            if alumni_id:
+                errors['alumni_id'] = 'An alumni ID is only used for old students.'
+        else:
+            errors['attendee_type'] = 'Choose a valid registration type.'
+
+        if errors:
+            raise serializers.ValidationError(errors)
         return attrs
+
+    @staticmethod
+    def _save_roster_match(registration):
+        registration.refresh_roster_match()
+        registration.save(
+            update_fields=(
+                'matched_roster_entry',
+                'roster_match_status',
+                'roster_matched_at',
+            )
+        )
+        return registration
+
+    def create(self, validated_data):
+        registration = super().create(validated_data)
+        return self._save_roster_match(registration)
+
+    def update(self, instance, validated_data):
+        registration = super().update(instance, validated_data)
+        return self._save_roster_match(registration)
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if not user or not user.is_authenticated or not user.is_staff:
+            representation.pop('matched_roster_entry', None)
+            representation.pop('roster_match_status', None)
+            representation.pop('roster_matched_at', None)
+        return representation
 
 class DonationSerializer(serializers.ModelSerializer):
     class Meta:

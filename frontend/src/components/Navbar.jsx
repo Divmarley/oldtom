@@ -128,6 +128,7 @@ const Navbar = () => {
 
   const mainLinks = [
     { name: 'Home', path: '/' },
+    { name: 'Induction', path: '/induction' },
     { name: 'Store', path: '/store' },
     { name: 'About', path: '/about' },
     { name: 'Alumni', path: '/alumni' },
@@ -160,7 +161,7 @@ const Navbar = () => {
             </Link>
           </div>
 
-          <div className='hidden lg:flex items-center space-x-4'>
+          <div className='hidden xl:flex items-center space-x-4'>
             <div className='flex items-baseline space-x-2'>
               {mainLinks.map((link) => (
                 <Link
@@ -249,7 +250,7 @@ const Navbar = () => {
             </div>
           </div>
 
-          <div className='lg:hidden flex items-center'>
+          <div className='xl:hidden flex items-center'>
             <button
               onClick={() => setIsOpen(!isOpen)}
               className='inline-flex items-center justify-center p-2 rounded-md text-white hover:text-secondary focus:outline-none'>
@@ -265,7 +266,7 @@ const Navbar = () => {
 
       {/* Mobile Menu */}
       {isOpen && (
-        <div className='lg:hidden bg-primary border-t border-blue-900 overflow-y-auto max-h-[calc(100vh-64px)]'>
+        <div className='xl:hidden bg-primary border-t border-blue-900 overflow-y-auto max-h-[calc(100vh-64px)]'>
           <div className='px-4 pt-4 pb-6 space-y-2'>
             {[...mainLinks, ...exploreLinks].map((link) => (
               <Link

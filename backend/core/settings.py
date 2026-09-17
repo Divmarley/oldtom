@@ -206,8 +206,8 @@ EMAIL_BACKEND = os.getenv(
 )
 EMAIL_HOST = os.getenv('EMAIL_HOST', '').strip()
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '').strip()
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '').replace(' ', '').strip()
 EMAIL_USE_TLS = env_bool('EMAIL_USE_TLS', True)
 EMAIL_USE_SSL = env_bool('EMAIL_USE_SSL', False)
 EMAIL_TIMEOUT = int(os.getenv('EMAIL_TIMEOUT', '10'))
@@ -246,6 +246,10 @@ EMAIL_SUPPORT_ADDRESS = os.getenv('EMAIL_SUPPORT_ADDRESS', 'info@oldtoms.com')
 SITE_NAME = os.getenv('SITE_NAME', 'Old Toms – Class of 2016')
 SITE_URL = os.getenv('SITE_URL', 'http://localhost').rstrip('/')
 EMAIL_LOGO_URL = os.getenv('EMAIL_LOGO_URL', f'{SITE_URL}/logo.jpg')
+EMAIL_LOGO_PATH = os.getenv(
+    'EMAIL_LOGO_PATH',
+    str(BASE_DIR / 'alumni' / 'static' / 'alumni' / 'email-logo.jpg'),
+)
 LOGIN_EMAIL_NOTIFICATIONS = env_bool('LOGIN_EMAIL_NOTIFICATIONS', True)
 WELCOME_EMAIL_NOTIFICATIONS = env_bool('WELCOME_EMAIL_NOTIFICATIONS', True)
 
@@ -259,8 +263,8 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
-    # Nginx is the single trusted proxy in the standard deployment. Set this to
-    # 2 when an external load balancer/CDN sits in front of Nginx.
+    # Nginx is the single trusted proxy in the standard deployment. Increase
+    # this only after direct origin access is restricted to trusted proxy IPs.
     'NUM_PROXIES': int(os.getenv('TRUSTED_PROXY_COUNT', '1')),
     'DEFAULT_THROTTLE_RATES': {
         'event_registration': os.getenv(

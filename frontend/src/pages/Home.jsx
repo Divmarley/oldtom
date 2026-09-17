@@ -1,6 +1,5 @@
 /** @format */
 
-import React from 'react';
 import { Link } from 'react-router-dom';
 import {
   Users,
@@ -11,6 +10,7 @@ import {
   ShieldCheck,
   Calendar,
 } from 'lucide-react';
+import schoolboys from '../assets/home/schoolboys-coffee-brown-uniform.jpg';
 
 const Home = () => {
   return (
@@ -84,8 +84,8 @@ const Home = () => {
           </div>
           <div className='relative'>
             <img
-              src='https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&q=80&w=1000'
-              alt='Alumni Gathering'
+              src={schoolboys}
+              alt='Schoolboys in white shirts and coffee-brown uniform shorts studying together'
               className='rounded-3xl shadow-2xl w-full h-80 object-cover transform -rotate-2 hover:rotate-0 transition-transform duration-500'
             />
             <div className='absolute -bottom-6 -right-6 bg-secondary p-6 rounded-2xl shadow-xl hidden md:block'>

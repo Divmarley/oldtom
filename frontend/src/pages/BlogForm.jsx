@@ -1,13 +1,15 @@
 /** @format */
 
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { blogService } from '../services/api';
-import { Save, X, Upload, CheckCircle } from 'lucide-react';
+import useCurrentUser from '../hooks/useCurrentUser';
+import { Save, Upload } from 'lucide-react';
 
 const BlogForm = ({ isEdit = false }) => {
   const { slug } = useParams();
   const navigate = useNavigate();
+  const { authLoading, isAuthenticated, isAdmin } = useCurrentUser();
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(isEdit);
   const [formData, setFormData] = useState({
@@ -54,12 +56,14 @@ const BlogForm = ({ isEdit = false }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!isAuthenticated) return;
+
     setLoading(true);
 
     const data = new FormData();
     data.append('title', formData.title);
     data.append('content', formData.content);
-    data.append('is_published', formData.is_published);
+    data.append('is_published', isAdmin ? formData.is_published : false);
     if (image) data.append('image', image);
 
     try {
@@ -77,7 +81,27 @@ const BlogForm = ({ isEdit = false }) => {
     }
   };
 
-  if (fetching) return <div className="text-center py-20">Loading...</div>;
+  if (authLoading || fetching) {
+    return <div className='text-center py-20'>Loading...</div>;
+  }
+
+  if (!isAuthenticated) {
+    const requestedPath = isEdit && slug ? `/blog/edit/${slug}` : '/blog/create';
+
+    return (
+      <div className='min-h-[60vh] px-4 py-20 text-center'>
+        <h1 className='text-3xl font-black text-primary'>Sign in required</h1>
+        <p className='mx-auto mt-3 max-w-lg text-gray-600'>
+          You need an authenticated account with permission to write a blog post.
+        </p>
+        <Link
+          to={`/login?next=${encodeURIComponent(requestedPath)}`}
+          className='mt-8 inline-flex rounded-xl bg-primary px-6 py-3 font-bold text-white hover:bg-blue-900'>
+          Sign in
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className='bg-gray-50 min-h-screen py-16 px-4'>
@@ -128,19 +152,25 @@ const BlogForm = ({ isEdit = false }) => {
             ></textarea>
           </div>
 
-          <div className='flex items-center'>
-            <input
-              type='checkbox'
-              id='is_published'
-              name='is_published'
-              checked={formData.is_published}
-              onChange={handleChange}
-              className='h-5 w-5 text-primary border-gray-300 rounded focus:ring-primary'
-            />
-            <label htmlFor='is_published' className='ml-3 text-gray-700 font-medium'>
-              Publish immediately
-            </label>
-          </div>
+          {isAdmin ? (
+            <div className='flex items-center'>
+              <input
+                type='checkbox'
+                id='is_published'
+                name='is_published'
+                checked={formData.is_published}
+                onChange={handleChange}
+                className='h-5 w-5 text-primary border-gray-300 rounded focus:ring-primary'
+              />
+              <label htmlFor='is_published' className='ml-3 text-gray-700 font-medium'>
+                Publish immediately
+              </label>
+            </div>
+          ) : (
+            <p className='rounded-xl bg-blue-50 px-4 py-3 text-sm font-medium text-primary'>
+              Your post will be submitted to an administrator for review.
+            </p>
+          )}
 
           <div className='flex gap-4 pt-4'>
             <button
@@ -149,7 +179,13 @@ const BlogForm = ({ isEdit = false }) => {
               className='flex-1 bg-primary text-white py-4 rounded-xl font-bold text-lg hover:bg-blue-900 transition-all flex items-center justify-center gap-2 shadow-lg disabled:opacity-50'
             >
               <Save className='h-5 w-5' />
-              {loading ? 'Saving...' : isEdit ? 'Update Post' : 'Create Post'}
+              {loading
+                ? 'Saving...'
+                : isEdit
+                  ? 'Update Post'
+                  : isAdmin
+                    ? 'Create Post'
+                    : 'Submit for Review'}
             </button>
             <button
               type='button'

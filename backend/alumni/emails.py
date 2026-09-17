@@ -1,5 +1,7 @@
 import logging
+from email.message import MIMEPart
 from functools import partial
+from pathlib import Path
 
 from django.conf import settings
 from django.contrib.auth.models import User
@@ -13,6 +15,36 @@ from .models import EventRegistration
 
 
 logger = logging.getLogger(__name__)
+
+EMAIL_LOGO_CONTENT_ID = 'old-toms-logo'
+EMAIL_LOGO_FILENAME = 'old-toms-logo.jpg'
+
+
+class RelatedEmailMultiAlternatives(EmailMultiAlternatives):
+    """Build a standards-compliant related message without Django internals."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.inline_attachments = []
+
+    def attach_inline(self, attachment):
+        if not isinstance(attachment, MIMEPart):
+            raise TypeError(
+                'Inline attachments must be email.message.MIMEPart objects.'
+            )
+        self.inline_attachments.append(attachment)
+
+    def _add_bodies(self, message):
+        if not self.inline_attachments:
+            return super()._add_bodies(message)
+
+        body = MIMEPart(policy=message.policy)
+        super()._add_bodies(body)
+        message.make_related()
+        message.attach(body)
+        for attachment in self.inline_attachments:
+            message.attach(attachment)
+        return message
 
 
 EVENT_EMAIL_CONTENT = {
@@ -73,17 +105,47 @@ def _common_context():
     }
 
 
+def _build_inline_logo():
+    logo_path = getattr(settings, 'EMAIL_LOGO_PATH', '')
+    if not logo_path:
+        return None
+
+    try:
+        logo_bytes = Path(logo_path).read_bytes()
+    except OSError:
+        logger.warning(
+            'Email logo could not be read from %s; using EMAIL_LOGO_URL instead.',
+            logo_path,
+        )
+        return None
+
+    logo = MIMEPart()
+    logo.set_content(
+        logo_bytes,
+        maintype='image',
+        subtype='jpeg',
+        disposition='inline',
+        filename=EMAIL_LOGO_FILENAME,
+    )
+    logo['Content-ID'] = f'<{EMAIL_LOGO_CONTENT_ID}>'
+    return logo
+
+
 def _send_templated_email(*, subject, recipient, template_name, context):
     if not recipient:
         return False
 
     try:
         full_context = {**_common_context(), **context}
+        inline_logo = _build_inline_logo()
+        if inline_logo is not None:
+            full_context['logo_url'] = f'cid:{EMAIL_LOGO_CONTENT_ID}'
+
         text_body = render_to_string(f'emails/{template_name}.txt', full_context)
         html_body = render_to_string(f'emails/{template_name}.html', full_context)
         reply_to = [settings.EMAIL_REPLY_TO] if settings.EMAIL_REPLY_TO else None
 
-        message = EmailMultiAlternatives(
+        message = RelatedEmailMultiAlternatives(
             subject=subject,
             body=text_body,
             from_email=settings.DEFAULT_FROM_EMAIL,
@@ -91,6 +153,8 @@ def _send_templated_email(*, subject, recipient, template_name, context):
             reply_to=reply_to,
         )
         message.attach_alternative(html_body, 'text/html')
+        if inline_logo is not None:
+            message.attach_inline(inline_logo)
         return message.send(fail_silently=False) == 1
     except Exception:
         logger.exception('Unable to send %s email to %s', template_name, recipient)
@@ -99,9 +163,10 @@ def _send_templated_email(*, subject, recipient, template_name, context):
 
 def notify_event_registration(registration_id):
     try:
-        registration = EventRegistration.objects.select_related('event').get(
-            pk=registration_id
-        )
+        registration = EventRegistration.objects.select_related(
+            'event',
+            'school',
+        ).get(pk=registration_id)
     except EventRegistration.DoesNotExist:
         return False
 
@@ -138,6 +203,7 @@ def notify_event_registration(registration_id):
         recipient=registration.email,
         template_name='event_registration',
         context={
+            'recipient_name': registration.name,
             'registration': registration,
             'event': registration.event,
             'event_url': event_url,

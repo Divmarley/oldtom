@@ -1,8 +1,9 @@
 /** @format */
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { blogService } from '../services/api';
+import useCurrentUser from '../hooks/useCurrentUser';
 import {
   Calendar,
   User,
@@ -14,7 +15,7 @@ import {
 const Blog = () => {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const { isAuthenticated } = useCurrentUser();
 
   useEffect(() => {
     const fetchPosts = async () => {
@@ -28,9 +29,7 @@ const Blog = () => {
       }
     };
 
-    const token = localStorage.getItem('access_token');
-    setIsLoggedIn(!!token);
-    fetchPosts();
+    void fetchPosts();
   }, []);
 
   return (
@@ -53,7 +52,7 @@ const Blog = () => {
             </p>
           </div>
 
-          {isLoggedIn &&  (
+          {isAuthenticated && (
             
             <Link
               to='/blog/create'
@@ -146,7 +145,7 @@ const Blog = () => {
                   Stories and updates from the community will appear here.
                 </p>
 
-                {isLoggedIn && (
+                {isAuthenticated && (
                   <Link
                     to='/blog/create'
                     className='inline-block mt-8 bg-primary text-white px-6 py-3 rounded-xl font-semibold hover:bg-blue-900 transition-colors'

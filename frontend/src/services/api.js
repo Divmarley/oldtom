@@ -12,7 +12,7 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('access_token');
-    if (token) {
+    if (token && !config.skipAuth) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
@@ -45,10 +45,11 @@ export const alumniService = {
 };
 
 export const eventService = {
-  getAll: () => api.get('/events/'),
-  getById: (id) => api.get(`/events/${id}/`),
+  getAll: () => api.get('/events/', { skipAuth: true }),
+  getById: (id) => api.get(`/events/${id}/`, { skipAuth: true }),
+  getRegistrationOptions: () => api.get('/event-registration/options/'),
   getByName: async (identifier) => {
-    const response = await api.get('/events/');
+    const response = await api.get('/events/', { skipAuth: true });
     const normalizedIdentifier = String(identifier || '').trim().toLowerCase();
 
     const event = response.data.find((item) => {
@@ -76,7 +77,9 @@ export const eventService = {
 };
 
 export const contactService = {
-  sendMessage: (data) => api.post('/contact/', data),
+  // Contact is a public submission endpoint. Do not let a stale login token
+  // prevent a visitor from sending a message.
+  sendMessage: (data) => api.post('/contact/', data, { skipAuth: true }),
 };
 
 export const yearbookService = {

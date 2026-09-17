@@ -1,3 +1,5 @@
+import importlib
+import os
 from io import BytesIO
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -14,7 +16,15 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import AccessToken
 
-from .models import Alumni, Event, EventRegistration, Project
+from .models import (
+    Alumni,
+    AlumniRosterEntry,
+    ContactMessage,
+    Event,
+    EventRegistration,
+    Project,
+    School,
+)
 from .serializers import ProductSerializer
 
 
@@ -34,6 +44,23 @@ class ProductSerializerTests(TestCase):
 
         self.assertEqual(product.slug, 'old-toms-tee')
         self.assertEqual(product.title, 'Old Toms Tee')
+
+
+class EmailSettingsTests(TestCase):
+    def test_smtp_password_strips_whitespace_from_gmail_app_password(self):
+        original_password = os.environ.get('EMAIL_HOST_PASSWORD')
+        try:
+            os.environ['EMAIL_HOST_PASSWORD'] = 'abcd efgh ijkl mnop'
+            import core.settings as settings_module
+            reloaded_module = importlib.reload(settings_module)
+            self.assertEqual(reloaded_module.EMAIL_HOST_PASSWORD, 'abcdefghijklmnop')
+        finally:
+            if original_password is None:
+                os.environ.pop('EMAIL_HOST_PASSWORD', None)
+            else:
+                os.environ['EMAIL_HOST_PASSWORD'] = original_password
+            import core.settings as settings_module
+            importlib.reload(settings_module)
 
 
 class ProfilePhotoTests(APITestCase):
@@ -79,6 +106,56 @@ class ProfilePhotoTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.profile.refresh_from_db()
         self.assertFalse(self.profile.photo)
+
+
+class ContactMessageTests(APITestCase):
+    payload = {
+        'name': 'Akosua Mensah',
+        'email': 'akosua@example.com',
+        'message': 'I would like to help with the induction.',
+    }
+
+    def test_anonymous_visitor_can_submit_a_contact_message(self):
+        response = self.client.post('/api/contact/', self.payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        message = ContactMessage.objects.get()
+        self.assertEqual(message.name, self.payload['name'])
+        self.assertEqual(message.email, self.payload['email'])
+        self.assertEqual(message.message, self.payload['message'])
+        self.assertIn('created_at', response.data)
+
+    def test_stale_or_malformed_token_does_not_block_public_submission(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer stale-token')
+
+        response = self.client.post('/api/contact/', self.payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(ContactMessage.objects.count(), 1)
+
+    def test_only_admin_can_read_submitted_messages(self):
+        ContactMessage.objects.create(**self.payload)
+
+        response = self.client.get('/api/contact/')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        member = User.objects.create_user(
+            username='contact-member', password='member-password'
+        )
+        self.client.force_authenticate(member)
+        response = self.client.get('/api/contact/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        admin = User.objects.create_user(
+            username='contact-admin',
+            password='admin-password',
+            is_staff=True,
+        )
+        self.client.force_authenticate(admin)
+        response = self.client.get('/api/contact/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data[0]['email'], self.payload['email'])
 
 
 @override_settings(
@@ -129,10 +206,35 @@ class AccountWelcomeEmailTests(APITestCase):
         profile_url = (
             'https://oldtoms.test/login?next=%2Fprofile%3Fedit%3D1'
         )
+        self.assertEqual(message.message().get_content_type(), 'multipart/related')
+        self.assertEqual(len(message.inline_attachments), 1)
+        logo = message.inline_attachments[0]
+        self.assertEqual(logo.get_content_type(), 'image/jpeg')
+        self.assertEqual(logo['Content-ID'], '<old-toms-logo>')
+        self.assertEqual(logo.get_content_disposition(), 'inline')
+        self.assertIn('src="cid:old-toms-logo"', html_body)
         self.assertIn('Welcome to the Old Toms network', html_body)
         self.assertIn('Complete your profile', html_body)
         self.assertIn(profile_url, html_body)
         self.assertIn(profile_url, message.body)
+
+    @override_settings(EMAIL_LOGO_PATH='')
+    def test_welcome_email_uses_remote_logo_if_inline_asset_is_disabled(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                '/api/auth/register/',
+                self.account_payload(),
+                format='json',
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        self.assertEqual(message.inline_attachments, [])
+        self.assertIn(
+            'src="https://oldtoms.test/logo.jpg"',
+            message.alternatives[0].content,
+        )
 
     def test_profile_completion_metadata_updates_after_profile_update(self):
         with self.captureOnCommitCallbacks(execute=True):
@@ -264,8 +366,8 @@ class AccountWelcomeEmailTests(APITestCase):
     DEFAULT_FROM_EMAIL='Old Toms <noreply@oldtoms.test>',
     EMAIL_REPLY_TO='events@oldtoms.test',
     EMAIL_SUPPORT_ADDRESS='support@oldtoms.test',
-    SITE_URL='https://oldtoms.test',
-    EMAIL_LOGO_URL='https://oldtoms.test/logo.jpg',
+    SITE_URL='https://oldtoms.org',
+    EMAIL_LOGO_URL='https://oldtoms.org/logo.jpg',
     LOGIN_EMAIL_NOTIFICATIONS=True,
 )
 class EmailNotificationTests(APITestCase):
@@ -281,7 +383,16 @@ class EmailNotificationTests(APITestCase):
             username='email-admin',
             email='admin@oldtoms.test',
             password='admin-password',
+            first_name='Event',
+            last_name='Creator',
             is_staff=True,
+        )
+        self.roster_entry = AlumniRosterEntry.objects.create(
+            full_name='Ama Mensah',
+            email='ama@example.com',
+            batch_year=2016,
+            alumni_id='OT-2016-001',
+            is_active=True,
         )
         mail.outbox.clear()
 
@@ -291,6 +402,8 @@ class EmailNotificationTests(APITestCase):
             'name': 'Ama Mensah',
             'email': 'ama@example.com',
             'phone': '+233200000000',
+            'attendee_type': EventRegistration.AttendeeType.OLD_STUDENT,
+            'batch_year': 2016,
             'alumni_id': 'OT-2016-001',
             **overrides,
         }
@@ -312,6 +425,53 @@ class EmailNotificationTests(APITestCase):
         self.assertEqual(mail.outbox[0].to, ['ama@example.com'])
         self.assertTrue(mail.outbox[0].alternatives)
         self.assertEqual(mail.outbox[0].alternatives[0].mimetype, 'text/html')
+        self.assertIn(
+            'src="cid:old-toms-logo"',
+            mail.outbox[0].alternatives[0].content,
+        )
+
+    def test_registration_email_uses_submitted_registrant_not_request_user(self):
+        self.client.force_authenticate(self.admin)
+
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                '/api/event-registration/',
+                self.registration_payload(
+                    name='Kojo Registrant',
+                    email='kojo.registrant@example.com',
+                    alumni_id='',
+                ),
+                format='json',
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        html_body = message.alternatives[0].content
+        self.assertEqual(message.to, ['kojo.registrant@example.com'])
+        self.assertIn('Hi Kojo Registrant,', message.body)
+        self.assertIn('Hi Kojo Registrant,', html_body)
+        self.assertNotIn('Hi Event Creator,', message.body)
+        self.assertNotIn('Hi Event Creator,', html_body)
+        self.assertNotIn(self.admin.email, message.to)
+
+    def test_event_creation_alone_does_not_send_a_registration_email(self):
+        self.client.force_authenticate(self.admin)
+
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                '/api/events/',
+                {
+                    'title': 'Newly Created Event',
+                    'date': '2026-10-01T18:00:00Z',
+                    'location': 'Accra Alumni Hall',
+                    'description': 'Registration opens soon.',
+                },
+                format='json',
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(len(mail.outbox), 0)
 
     def test_duplicate_event_registration_is_rejected_without_another_email(self):
         with self.captureOnCommitCallbacks(execute=True):
@@ -516,6 +676,10 @@ class EmailNotificationTests(APITestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn('New sign-in', mail.outbox[0].subject)
         self.assertIn('203.0.113.10', mail.outbox[0].body)
+        self.assertIn(
+            'src="cid:old-toms-logo"',
+            mail.outbox[0].alternatives[0].content,
+        )
 
         mail.outbox.clear()
         response = self.client.post(
@@ -526,6 +690,365 @@ class EmailNotificationTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertEqual(len(mail.outbox), 0)
+
+
+class EventRegistrationContractTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+        self.event = Event.objects.create(
+            title='Old Toms Induction',
+            date='2026-10-17T15:00:00Z',
+            location='St. Thomas Aquinas SHS',
+            description='Induction and homecoming celebration',
+        )
+        self.sister_school = School.objects.create(
+            name='St. Catherine Sister School',
+            kind=School.Kind.SISTER,
+            is_active=True,
+            sort_order=20,
+        )
+        self.inactive_sister_school = School.objects.create(
+            name='Inactive Sister School',
+            kind=School.Kind.SISTER,
+            is_active=False,
+            sort_order=30,
+        )
+        self.host_school = School.objects.create(
+            name='St. Thomas Aquinas SHS',
+            kind=School.Kind.HOST,
+            is_active=True,
+            sort_order=10,
+        )
+        self.roster_entry = AlumniRosterEntry.objects.create(
+            full_name='Kojo Asare',
+            email='kojo@example.com',
+            batch_year=2016,
+            alumni_id='OT-2016-042',
+            is_active=True,
+        )
+
+    def registration_payload(self, **overrides):
+        return {
+            'event': self.event.pk,
+            'name': 'Kojo Asare',
+            'email': 'kojo@example.com',
+            'phone': '+233200000042',
+            'attendee_type': EventRegistration.AttendeeType.OLD_STUDENT,
+            'batch_year': 2016,
+            'alumni_id': 'OT-2016-042',
+            **overrides,
+        }
+
+    def non_alumni_payload(self, **overrides):
+        return {
+            'event': self.event.pk,
+            'name': 'Akosua Owusu',
+            'email': 'akosua@example.com',
+            'phone': '+233200000043',
+            **overrides,
+        }
+
+    def assert_match_details_are_private(self, response):
+        self.assertNotIn('matched_roster_entry', response.data)
+        self.assertNotIn('roster_match_status', response.data)
+        self.assertNotIn('roster_matched_at', response.data)
+
+    def test_new_registration_requires_an_attendee_type(self):
+        payload = self.registration_payload()
+        payload.pop('attendee_type')
+
+        response = self.client.post(
+            '/api/event-registration/', payload, format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('attendee_type', response.data)
+        self.assertFalse(EventRegistration.objects.exists())
+
+    def test_old_student_requires_a_batch_year(self):
+        payload = self.registration_payload()
+        payload.pop('batch_year')
+
+        response = self.client.post(
+            '/api/event-registration/', payload, format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('batch_year', response.data)
+        self.assertFalse(EventRegistration.objects.exists())
+
+    def test_old_student_matches_active_roster_by_normalized_email_batch_and_id(self):
+        response = self.client.post(
+            '/api/event-registration/',
+            self.registration_payload(email=' KOJO@EXAMPLE.COM '),
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        registration = EventRegistration.objects.get()
+        self.assertEqual(registration.email, 'kojo@example.com')
+        self.assertEqual(registration.status, EventRegistration.Status.PENDING)
+        self.assertEqual(registration.matched_roster_entry, self.roster_entry)
+        self.assertEqual(
+            registration.roster_match_status,
+            EventRegistration.RosterMatchStatus.MATCHED,
+        )
+        self.assertIsNotNone(registration.roster_matched_at)
+        self.assert_match_details_are_private(response)
+
+    def test_old_student_can_match_by_email_and_batch_without_an_alumni_id(self):
+        response = self.client.post(
+            '/api/event-registration/',
+            self.registration_payload(alumni_id=''),
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        registration = EventRegistration.objects.get()
+        self.assertEqual(registration.matched_roster_entry, self.roster_entry)
+        self.assertEqual(
+            registration.roster_match_status,
+            EventRegistration.RosterMatchStatus.MATCHED,
+        )
+
+    def test_old_student_can_match_an_id_only_roster_entry(self):
+        roster_entry = AlumniRosterEntry.objects.create(
+            full_name='Official ID Student',
+            batch_year=2012,
+            alumni_id='OT-2012-007',
+            is_active=True,
+        )
+
+        response = self.client.post(
+            '/api/event-registration/',
+            self.registration_payload(
+                name='Official ID Student',
+                email='id-student@example.com',
+                batch_year=2012,
+                alumni_id='ot-2012-007',
+            ),
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        registration = EventRegistration.objects.get()
+        self.assertEqual(registration.matched_roster_entry, roster_entry)
+        self.assertEqual(
+            registration.roster_match_status,
+            EventRegistration.RosterMatchStatus.MATCHED,
+        )
+
+    def test_alumni_id_does_not_bypass_a_different_verified_roster_email(self):
+        response = self.client.post(
+            '/api/event-registration/',
+            self.registration_payload(email='different@example.com'),
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        registration = EventRegistration.objects.get()
+        self.assertIsNone(registration.matched_roster_entry)
+        self.assertEqual(
+            registration.roster_match_status,
+            EventRegistration.RosterMatchStatus.NOT_FOUND,
+        )
+
+    def test_supplied_alumni_id_must_match_the_email_and_batch_roster_entry(self):
+        response = self.client.post(
+            '/api/event-registration/',
+            self.registration_payload(alumni_id='OT-2016-999'),
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        registration = EventRegistration.objects.get()
+        self.assertEqual(registration.status, EventRegistration.Status.PENDING)
+        self.assertIsNone(registration.matched_roster_entry)
+        self.assertEqual(
+            registration.roster_match_status,
+            EventRegistration.RosterMatchStatus.NOT_FOUND,
+        )
+        self.assertIsNone(registration.roster_matched_at)
+        self.assert_match_details_are_private(response)
+
+    def test_inactive_roster_entries_do_not_verify_old_students(self):
+        AlumniRosterEntry.objects.create(
+            full_name='Inactive Old Student',
+            email='inactive@example.com',
+            batch_year=2014,
+            alumni_id='OT-2014-001',
+            is_active=False,
+        )
+
+        response = self.client.post(
+            '/api/event-registration/',
+            self.registration_payload(
+                name='Inactive Old Student',
+                email='inactive@example.com',
+                batch_year=2014,
+                alumni_id='OT-2014-001',
+            ),
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        registration = EventRegistration.objects.get()
+        self.assertIsNone(registration.matched_roster_entry)
+        self.assertEqual(
+            registration.roster_match_status,
+            EventRegistration.RosterMatchStatus.NOT_FOUND,
+        )
+
+    def test_sister_school_registration_accepts_only_an_active_sister_school(self):
+        response = self.client.post(
+            '/api/event-registration/',
+            self.non_alumni_payload(
+                attendee_type=EventRegistration.AttendeeType.SISTER_SCHOOL,
+                school=self.sister_school.pk,
+            ),
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        registration = EventRegistration.objects.get()
+        self.assertEqual(registration.school, self.sister_school)
+        self.assertEqual(registration.status, EventRegistration.Status.PENDING)
+        self.assertEqual(
+            registration.roster_match_status,
+            EventRegistration.RosterMatchStatus.NOT_REQUIRED,
+        )
+        self.assert_match_details_are_private(response)
+
+        for invalid_school in (self.inactive_sister_school, self.host_school):
+            with self.subTest(school=invalid_school.name):
+                response = self.client.post(
+                    '/api/event-registration/',
+                    self.non_alumni_payload(
+                        email=f'invalid-{invalid_school.pk}@example.com',
+                        attendee_type=(
+                            EventRegistration.AttendeeType.SISTER_SCHOOL
+                        ),
+                        school=invalid_school.pk,
+                    ),
+                    format='json',
+                )
+
+                self.assertEqual(
+                    response.status_code, status.HTTP_400_BAD_REQUEST
+                )
+                self.assertIn('school', response.data)
+
+    def test_sister_school_registration_requires_a_school(self):
+        response = self.client.post(
+            '/api/event-registration/',
+            self.non_alumni_payload(
+                attendee_type=EventRegistration.AttendeeType.SISTER_SCHOOL,
+            ),
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('school', response.data)
+
+    def test_other_school_registration_requires_and_normalizes_a_school_name(self):
+        response = self.client.post(
+            '/api/event-registration/',
+            self.non_alumni_payload(
+                attendee_type=EventRegistration.AttendeeType.OTHER_SCHOOL,
+                other_school_name='  Legacy Academy  ',
+            ),
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        registration = EventRegistration.objects.get()
+        self.assertEqual(registration.other_school_name, 'Legacy Academy')
+        self.assertEqual(registration.status, EventRegistration.Status.PENDING)
+        self.assertEqual(
+            registration.roster_match_status,
+            EventRegistration.RosterMatchStatus.NOT_REQUIRED,
+        )
+        self.assert_match_details_are_private(response)
+
+        response = self.client.post(
+            '/api/event-registration/',
+            self.non_alumni_payload(
+                email='blank-school@example.com',
+                attendee_type=EventRegistration.AttendeeType.OTHER_SCHOOL,
+                other_school_name='   ',
+            ),
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('other_school_name', response.data)
+
+    def test_anonymous_registration_cannot_spoof_status_or_roster_match_fields(self):
+        response = self.client.post(
+            '/api/event-registration/',
+            self.registration_payload(
+                email='not-on-roster@example.com',
+                status=EventRegistration.Status.APPROVED,
+                matched_roster_entry=self.roster_entry.pk,
+                roster_match_status=EventRegistration.RosterMatchStatus.MATCHED,
+                roster_matched_at='2026-01-01T00:00:00Z',
+            ),
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        registration = EventRegistration.objects.get()
+        self.assertEqual(registration.status, EventRegistration.Status.PENDING)
+        self.assertIsNone(registration.matched_roster_entry)
+        self.assertEqual(
+            registration.roster_match_status,
+            EventRegistration.RosterMatchStatus.NOT_FOUND,
+        )
+        self.assertIsNone(registration.roster_matched_at)
+        self.assert_match_details_are_private(response)
+
+    def test_options_return_only_active_sister_schools_and_active_batch_years(self):
+        second_sister = School.objects.create(
+            name='Our Lady Sister School',
+            kind=School.Kind.SISTER,
+            is_active=True,
+            sort_order=5,
+        )
+        AlumniRosterEntry.objects.create(
+            full_name='Another 2016 Student',
+            email='another-2016@example.com',
+            batch_year=2016,
+            is_active=True,
+        )
+        AlumniRosterEntry.objects.create(
+            full_name='Active 2014 Student',
+            email='active-2014@example.com',
+            batch_year=2014,
+            is_active=True,
+        )
+        AlumniRosterEntry.objects.create(
+            full_name='Inactive 2009 Student',
+            email='inactive-2009@example.com',
+            batch_year=2009,
+            is_active=False,
+        )
+
+        response = self.client.get('/api/event-registration/options/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('sister_schools', response.data)
+        self.assertIn('batch_years', response.data)
+        self.assertEqual(
+            {school['id'] for school in response.data['sister_schools']},
+            {self.sister_school.pk, second_sister.pk},
+        )
+        self.assertEqual(
+            {school['name'] for school in response.data['sister_schools']},
+            {self.sister_school.name, second_sister.name},
+        )
+        self.assertEqual(set(response.data['batch_years']), {2014, 2016})
+        self.assertEqual(len(response.data['batch_years']), 2)
+        self.assertNotIn('roster_entries', response.data)
 
 
 class RolePermissionTests(APITestCase):

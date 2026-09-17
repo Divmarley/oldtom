@@ -4,7 +4,7 @@
 {% block preheader %}{{ heading }} for {{ event.title }}.{% endblock %}
 
 {% block content %}
-  <p style="margin:0 0 10px;color:#6b7280;font-size:14px;">Hello {{ registration.name }},</p>
+  <p style="margin:0 0 10px;color:#6b7280;font-size:14px;">Hi {{ recipient_name }},</p>
   <h1 style="margin:0 0 18px;color:#003366;font-size:30px;line-height:1.2;">{{ heading }}</h1>
   <p style="margin:0 0 22px;color:#4b5563;font-size:16px;line-height:1.7;">{{ intro }}</p>
 
@@ -20,6 +20,16 @@
           <strong style="color:#003366;">Date:</strong> {{ event.date|date:"l, F j, Y" }}<br>
           <strong style="color:#003366;">Time:</strong> {{ event.date|time:"g:i A T" }}<br>
           <strong style="color:#003366;">Location:</strong> {{ event.location }}<br>
+          {% if registration.attendee_type != 'legacy' %}
+            <strong style="color:#003366;">Joining as:</strong> {{ registration.get_attendee_type_display }}<br>
+          {% endif %}
+          {% if registration.attendee_type == 'old_student' %}
+            <strong style="color:#003366;">Year batch:</strong> {{ registration.batch_year }}<br>
+          {% elif registration.attendee_type == 'sister_school' %}
+            <strong style="color:#003366;">School:</strong> {{ registration.school.name }}<br>
+          {% elif registration.attendee_type == 'other_school' %}
+            <strong style="color:#003366;">School:</strong> {{ registration.other_school_name }}<br>
+          {% endif %}
           <strong style="color:#003366;">Reference:</strong> {{ registration_reference }}
         </div>
       </td>

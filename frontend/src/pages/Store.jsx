@@ -1,8 +1,9 @@
 /** @format */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { productService } from '../services/api';
+import useCurrentUser from '../hooks/useCurrentUser';
 import { Plus, X, Upload, ShoppingBag, Sparkles } from 'lucide-react';
 
 const initialForm = {
@@ -23,7 +24,7 @@ const Store = () => {
   const [products, setProducts] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [isLoggedIn] = useState(() => !!localStorage.getItem('access_token'));
+  const { isAdmin } = useCurrentUser();
   const [formData, setFormData] = useState(initialForm);
   const [image, setImage] = useState(null);
 
@@ -31,7 +32,7 @@ const Store = () => {
     try {
       const res = await productService.getAll();
       setProducts(res.data);
-    } catch (error) {
+    } catch {
       setProducts([]);
     }
   }, []);
@@ -56,6 +57,11 @@ const Store = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!isAdmin) {
+      setShowModal(false);
+      return;
+    }
+
     setSubmitting(true);
 
     const data = new FormData();
@@ -106,7 +112,7 @@ const Store = () => {
           <h2 className='mt-2 text-2xl font-black text-primary'>Our latest drops</h2>
         </div>
 
-        {isLoggedIn && (
+        {isAdmin && (
           <button
             type='button'
             onClick={() => setShowModal(true)}
@@ -161,7 +167,7 @@ const Store = () => {
         ))}
       </div>
 
-      {showModal && (
+      {isAdmin && showModal && (
         <div className='fixed inset-0 z-50 flex items-center justify-center bg-primary/40 backdrop-blur-sm p-4'>
           <div className='bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden'>
             <div className='flex items-center justify-between bg-primary text-white px-6 py-4'>

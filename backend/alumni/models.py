@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 class Alumni(models.Model):
     PROFILE_REQUIRED_FIELDS = (
@@ -74,6 +75,91 @@ class Event(models.Model):
     def __str__(self):
         return self.title
 
+
+class School(models.Model):
+    class Kind(models.TextChoices):
+        HOST = 'host', 'Host school'
+        SISTER = 'sister', 'Sister school'
+
+    name = models.CharField(max_length=255, unique=True)
+    kind = models.CharField(max_length=20, choices=Kind.choices)
+    is_active = models.BooleanField(default=True, db_index=True)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ('sort_order', 'name')
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        self.name = self.name.strip()
+        return super().save(*args, **kwargs)
+
+
+class AlumniRosterEntry(models.Model):
+    full_name = models.CharField(max_length=255)
+    email = models.EmailField(null=True, blank=True)
+    batch_year = models.PositiveSmallIntegerField(db_index=True)
+    alumni_id = models.CharField(max_length=50, null=True, blank=True)
+    is_active = models.BooleanField(default=True, db_index=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ('-batch_year', 'full_name')
+        constraints = [
+            models.UniqueConstraint(
+                fields=('batch_year', 'email'),
+                name='unique_roster_batch_email',
+            ),
+            models.UniqueConstraint(
+                fields=('batch_year', 'alumni_id'),
+                name='unique_roster_batch_alumni_id',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.full_name} — {self.batch_year}'
+
+    def clean(self):
+        super().clean()
+        normalized_email = (self.email or '').strip().lower() or None
+        normalized_alumni_id = (self.alumni_id or '').strip().upper() or None
+        self.email = normalized_email
+        self.alumni_id = normalized_alumni_id
+
+        if not normalized_email and not normalized_alumni_id:
+            raise ValidationError(
+                'A roster entry needs an email address or an official alumni ID.'
+            )
+
+        duplicate_entries = AlumniRosterEntry.objects.exclude(pk=self.pk).filter(
+            batch_year=self.batch_year
+        )
+        errors = {}
+        if normalized_email and duplicate_entries.filter(
+            email__iexact=normalized_email
+        ).exists():
+            errors['email'] = 'This email is already on the roster for that batch.'
+        if normalized_alumni_id and duplicate_entries.filter(
+            alumni_id__iexact=normalized_alumni_id
+        ).exists():
+            errors['alumni_id'] = (
+                'This alumni ID is already on the roster for that batch.'
+            )
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_name = self.full_name.strip()
+        self.email = (self.email or '').strip().lower() or None
+        self.alumni_id = (self.alumni_id or '').strip().upper() or None
+        return super().save(*args, **kwargs)
+
 class ContactMessage(models.Model):
     name = models.CharField(max_length=255)
     email = models.EmailField()
@@ -98,6 +184,18 @@ class YearbookEntry(models.Model):
         return f"Entry by {self.name or (self.alumni.name if self.alumni else 'Unknown')}"
 
 class EventRegistration(models.Model):
+    class AttendeeType(models.TextChoices):
+        LEGACY = 'legacy', 'Legacy registration'
+        OLD_STUDENT = 'old_student', 'Old student'
+        SISTER_SCHOOL = 'sister_school', 'Sister school guest'
+        OTHER_SCHOOL = 'other_school', 'Other school guest'
+
+    class RosterMatchStatus(models.TextChoices):
+        PENDING = 'pending', 'Pending database check'
+        MATCHED = 'matched', 'Matched in database'
+        NOT_FOUND = 'not_found', 'Manual review required'
+        NOT_REQUIRED = 'not_required', 'Not required'
+
     class Status(models.TextChoices):
         PENDING = 'pending', 'Pending review'
         APPROVED = 'approved', 'Approved'
@@ -109,6 +207,35 @@ class EventRegistration(models.Model):
     email = models.EmailField()
     phone = models.CharField(max_length=20)
     alumni_id = models.CharField(max_length=50, blank=True, null=True, help_text="Optional Alumni ID if applicable")
+    attendee_type = models.CharField(
+        max_length=20,
+        choices=AttendeeType.choices,
+        default=AttendeeType.LEGACY,
+        db_index=True,
+    )
+    school = models.ForeignKey(
+        School,
+        on_delete=models.PROTECT,
+        related_name='event_registrations',
+        null=True,
+        blank=True,
+    )
+    other_school_name = models.CharField(max_length=255, blank=True)
+    batch_year = models.PositiveSmallIntegerField(null=True, blank=True, db_index=True)
+    matched_roster_entry = models.ForeignKey(
+        AlumniRosterEntry,
+        on_delete=models.SET_NULL,
+        related_name='event_registrations',
+        null=True,
+        blank=True,
+    )
+    roster_match_status = models.CharField(
+        max_length=20,
+        choices=RosterMatchStatus.choices,
+        default=RosterMatchStatus.PENDING,
+        db_index=True,
+    )
+    roster_matched_at = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True, null=True)
     status = models.CharField(
         max_length=20,
@@ -135,7 +262,43 @@ class EventRegistration(models.Model):
 
     def save(self, *args, **kwargs):
         self.email = self.email.strip().lower()
+        self.alumni_id = (self.alumni_id or '').strip().upper() or None
+        self.other_school_name = (self.other_school_name or '').strip()
         return super().save(*args, **kwargs)
+
+    def refresh_roster_match(self):
+        if self.attendee_type == self.AttendeeType.LEGACY:
+            self.matched_roster_entry = None
+            self.roster_match_status = self.RosterMatchStatus.PENDING
+            self.roster_matched_at = None
+            return
+
+        if self.attendee_type != self.AttendeeType.OLD_STUDENT:
+            self.matched_roster_entry = None
+            self.roster_match_status = self.RosterMatchStatus.NOT_REQUIRED
+            self.roster_matched_at = None
+            return
+
+        roster = AlumniRosterEntry.objects.filter(
+            is_active=True,
+            batch_year=self.batch_year,
+        )
+        if self.alumni_id:
+            roster = roster.filter(
+                models.Q(email__isnull=True) | models.Q(email__iexact=self.email),
+                alumni_id__iexact=self.alumni_id,
+            )
+        else:
+            roster = roster.filter(email__iexact=self.email)
+
+        match = roster.order_by('pk').first()
+        self.matched_roster_entry = match
+        self.roster_match_status = (
+            self.RosterMatchStatus.MATCHED
+            if match
+            else self.RosterMatchStatus.NOT_FOUND
+        )
+        self.roster_matched_at = timezone.now() if match else None
 
     def clean(self):
         super().clean()

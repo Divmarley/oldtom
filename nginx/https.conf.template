@@ -1,0 +1,151 @@
+# This file is rendered by the official Nginx image when the production
+# Compose override is used. DOMAIN is the certificate's primary name;
+# ADDITIONAL_DOMAINS may contain space-separated SANs such as www.example.com.
+
+# Keep the ACME challenge reachable over HTTP, and redirect everything else to
+# the canonical HTTPS hostname.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DOMAIN} ${ADDITIONAL_DOMAINS};
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        try_files $uri =404;
+        access_log off;
+    }
+
+    # Docker's lightweight health-check client does not support HTTPS.
+    location = /health {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
+    }
+
+    location / {
+        return 308 https://${DOMAIN}$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name ${DOMAIN} ${ADDITIONAL_DOMAINS};
+
+    # Certificates may cover aliases, but the application has one public
+    # origin. A return-only `if` is safe in Nginx's server rewrite phase.
+    if ($host != ${DOMAIN}) {
+        return 308 https://${DOMAIN}$request_uri;
+    }
+
+    ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    client_max_body_size 100M;
+
+    # Nginx owns the public HSTS response, including static and frontend
+    # content. Hide Django's copy in proxied locations to avoid conflicts.
+    add_header Strict-Transport-Security "${HSTS_HEADER_VALUE}" always;
+    include /etc/nginx/security-headers.conf;
+
+    # Keep ACME validation available if Certbot renews a certificate with the
+    # webroot authenticator.
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        try_files $uri =404;
+        access_log off;
+    }
+
+    # React frontend - SPA routing
+    location / {
+        proxy_pass http://frontend:80;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port 443;
+        proxy_hide_header Strict-Transport-Security;
+        proxy_redirect off;
+
+        # Timeouts
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+
+    # Django API
+    location /api/ {
+        proxy_pass http://backend:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port 443;
+        proxy_hide_header Strict-Transport-Security;
+        proxy_redirect off;
+
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+
+    # Django admin
+    location /admin/ {
+        proxy_pass http://backend:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port 443;
+        proxy_hide_header Strict-Transport-Security;
+        proxy_redirect off;
+
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+
+    # Static files with caching
+    location /static/ {
+        alias /app/staticfiles/;
+        expires 30d;
+        add_header Strict-Transport-Security "${HSTS_HEADER_VALUE}" always;
+        include /etc/nginx/security-headers.conf;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+        gzip on;
+        gzip_types text/css application/javascript application/json;
+    }
+
+    # Media files with caching
+    location /media/ {
+        alias /app/media/;
+        expires 7d;
+        add_header Strict-Transport-Security "${HSTS_HEADER_VALUE}" always;
+        include /etc/nginx/security-headers.conf;
+        add_header Cache-Control "public";
+        access_log off;
+    }
+
+    # Health check endpoint
+    location = /health {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Strict-Transport-Security "${HSTS_HEADER_VALUE}" always;
+        include /etc/nginx/security-headers.conf;
+        add_header Content-Type text/plain;
+    }
+}

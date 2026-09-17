@@ -1,16 +1,20 @@
 services:
   mysql:
+    env_file: !override
+      - ${APP_ENV_FILE:-/opt/oldtom/oldtom.env}
     ports: !reset []
 
   phpmyadmin:
     profiles: ['tools']
     ports: !override
-      - '127.0.0.1:${PHPMYADMIN_PORT:-8080}:80'
+      - '${PHPMYADMIN_BIND_IP:-127.0.0.1}:${PHPMYADMIN_PORT:-8080}:80'
 
   backend:
     build: !reset null
     image: ${BACKEND_IMAGE:-marleyk/oldtoms:backend-latest}
     pull_policy: always
+    env_file: !override
+      - ${APP_ENV_FILE:-/opt/oldtom/oldtom.env}
     ports: !reset []
     restart: unless-stopped
 
@@ -24,3 +28,107 @@ services:
     restart: unless-stopped
     ports: !override
       - '${HTTP_PORT:-80}:80'
+      - '${HTTPS_PORT:-443}:443'
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in the production environment file}
+      ADDITIONAL_DOMAINS: ${ADDITIONAL_DOMAINS:-}
+      HSTS_HEADER_VALUE: ${HSTS_HEADER_VALUE:-max-age=31536000}
+    volumes: !override
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/https.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./nginx/security-headers.conf:/etc/nginx/security-headers.conf:ro
+      - static_volume:/app/staticfiles:ro
+      - media_volume:/app/media:ro
+      - letsencrypt:/etc/letsencrypt:ro
+      - certbot_webroot:/var/www/certbot:ro
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'wget',
+          '--quiet',
+          '--tries=1',
+          '--spider',
+          'http://127.0.0.1/health',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # These one-off services manage the certificate. They are intentionally kept
+  # behind a profile so the long-running production stack only contains the app.
+  certbot-init:
+    image: ${CERTBOT_IMAGE:-certbot/certbot@sha256:f70ad0adbb7e117f0fe42a63c553f28ea451edabc0148757b6efcd9735acaa20}
+    profiles: ['certbot']
+    environment:
+      CERTBOT_EMAIL: ${CERTBOT_EMAIL:?Set CERTBOT_EMAIL in the production environment file}
+      DOMAIN: ${DOMAIN:?Set DOMAIN in the production environment file}
+      ADDITIONAL_DOMAINS: ${ADDITIONAL_DOMAINS:-}
+    ports:
+      - '${HTTP_PORT:-80}:80'
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot_webroot:/var/www/certbot
+    entrypoint: /bin/sh
+    command:
+      - -ec
+      - |
+        set -- -d "$$DOMAIN"
+        for name in $$ADDITIONAL_DOMAINS; do
+          set -- "$$@" -d "$$name"
+        done
+        exec certbot certonly --standalone --non-interactive --agree-tos --no-eff-email \
+          --email "$$CERTBOT_EMAIL" --cert-name "$$DOMAIN" --keep-until-expiring "$$@"
+
+  # Run once after Nginx is serving the ACME webroot. This changes the initial
+  # standalone certificate lineage to webroot-based renewal without downtime.
+  certbot-configure-renewal:
+    image: ${CERTBOT_IMAGE:-certbot/certbot@sha256:f70ad0adbb7e117f0fe42a63c553f28ea451edabc0148757b6efcd9735acaa20}
+    profiles: ['certbot']
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in the production environment file}
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot_webroot:/var/www/certbot
+    entrypoint: /bin/sh
+    command:
+      - -ec
+      - |
+        exec certbot reconfigure --non-interactive --cert-name "$$DOMAIN" \
+          --webroot --webroot-path /var/www/certbot
+
+  certbot-renew:
+    image: ${CERTBOT_IMAGE:-certbot/certbot@sha256:f70ad0adbb7e117f0fe42a63c553f28ea451edabc0148757b6efcd9735acaa20}
+    profiles: ['certbot']
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot_webroot:/var/www/certbot
+    entrypoint: certbot
+    command: renew --non-interactive
+
+  # Use after changing ADDITIONAL_DOMAINS. Nginx must already be running so
+  # Certbot can complete the webroot challenge for the added names.
+  certbot-update-domains:
+    image: ${CERTBOT_IMAGE:-certbot/certbot@sha256:f70ad0adbb7e117f0fe42a63c553f28ea451edabc0148757b6efcd9735acaa20}
+    profiles: ['certbot']
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in the production environment file}
+      ADDITIONAL_DOMAINS: ${ADDITIONAL_DOMAINS:-}
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot_webroot:/var/www/certbot
+    entrypoint: /bin/sh
+    command:
+      - -ec
+      - |
+        set -- -d "$$DOMAIN"
+        for name in $$ADDITIONAL_DOMAINS; do
+          set -- "$$@" -d "$$name"
+        done
+        exec certbot certonly --webroot --webroot-path /var/www/certbot \
+          --non-interactive --agree-tos --no-eff-email --cert-name "$$DOMAIN" \
+          --renew-with-new-domains "$$@"
+
+volumes:
+  letsencrypt:
+  certbot_webroot:

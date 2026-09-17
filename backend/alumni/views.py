@@ -1,6 +1,6 @@
 from rest_framework import viewsets, filters, status
 from rest_framework.views import APIView
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
@@ -10,7 +10,7 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from .auth_serializers import EmailTokenObtainPairSerializer
 from .emails import schedule_event_registration_email, schedule_welcome_email
-from .models import Alumni, Event, ContactMessage, YearbookEntry, EventRegistration, Donation, Project
+from .models import Alumni, AlumniRosterEntry, Event, ContactMessage, YearbookEntry, EventRegistration, Donation, Project, School
 from .serializers import (
     UserSerializer,
     AlumniSerializer, 
@@ -18,6 +18,7 @@ from .serializers import (
     ContactMessageSerializer, 
     YearbookEntrySerializer,
     EventRegistrationSerializer,
+    SchoolSerializer,
     DonationSerializer,
     ProjectSerializer
 )
@@ -138,13 +139,24 @@ class ContactMessageViewSet(viewsets.ModelViewSet):
     serializer_class = ContactMessageSerializer
     permission_classes = [IsAdminOrCreate]
 
+    def perform_authentication(self, request):
+        # A contact submission is public. Treat even an expired or malformed
+        # token as irrelevant here, while retaining normal authentication for
+        # the admin-only inbox actions.
+        if self.action != 'create':
+            super().perform_authentication(request)
+
 class YearbookEntryViewSet(viewsets.ModelViewSet):
     queryset = YearbookEntry.objects.all().order_by('-created_at')
     serializer_class = YearbookEntrySerializer
     permission_classes = [IsAdminOrReadOnlyOrCreate]
 
 class EventRegistrationViewSet(viewsets.ModelViewSet):
-    queryset = EventRegistration.objects.all().order_by('-registered_at')
+    queryset = EventRegistration.objects.select_related(
+        'event',
+        'school',
+        'matched_roster_entry',
+    ).order_by('-registered_at')
     serializer_class = EventRegistrationSerializer
     permission_classes = [IsAdminOrCreate]
     throttle_scope = 'event_registration'
@@ -153,6 +165,34 @@ class EventRegistrationViewSet(viewsets.ModelViewSet):
         if self.action == 'create':
             return [ScopedRateThrottle()]
         return []
+
+    @action(
+        detail=False,
+        methods=['get'],
+        authentication_classes=[],
+        permission_classes=[AllowAny],
+        url_path='options',
+    )
+    def registration_options(self, request):
+        sister_schools = School.objects.filter(
+            kind=School.Kind.SISTER,
+            is_active=True,
+        ).order_by('sort_order', 'name')
+        batch_years = list(
+            AlumniRosterEntry.objects.filter(is_active=True)
+            .order_by('-batch_year')
+            .values_list('batch_year', flat=True)
+            .distinct()
+        )
+        return Response(
+            {
+                'sister_schools': SchoolSerializer(
+                    sister_schools,
+                    many=True,
+                ).data,
+                'batch_years': batch_years,
+            }
+        )
 
     def perform_create(self, serializer):
         try:
@@ -172,13 +212,45 @@ class EventRegistrationViewSet(viewsets.ModelViewSet):
         previous_status = serializer.instance.status
         previous_email = serializer.instance.email
         previous_event_id = serializer.instance.event_id
+        previous_attendee_type = serializer.instance.attendee_type
+        previous_school_id = serializer.instance.school_id
+        previous_other_school_name = serializer.instance.other_school_name
+        previous_batch_year = serializer.instance.batch_year
+        previous_alumni_id = serializer.instance.alumni_id
         next_status = serializer.validated_data.get('status', previous_status)
         next_email = serializer.validated_data.get('email', previous_email)
         next_event = serializer.validated_data.get('event', serializer.instance.event)
+        next_attendee_type = serializer.validated_data.get(
+            'attendee_type', previous_attendee_type
+        )
+        next_school = serializer.validated_data.get(
+            'school', serializer.instance.school
+        )
+        next_other_school_name = serializer.validated_data.get(
+            'other_school_name', previous_other_school_name
+        )
+        next_batch_year = serializer.validated_data.get(
+            'batch_year', previous_batch_year
+        )
+        next_alumni_id = serializer.validated_data.get(
+            'alumni_id', previous_alumni_id
+        )
         status_changed = next_status != previous_status
         recipient_changed = next_email != previous_email
         event_changed = next_event.pk != previous_event_id
-        notification_changed = status_changed or recipient_changed or event_changed
+        affiliation_changed = (
+            next_attendee_type != previous_attendee_type
+            or getattr(next_school, 'pk', None) != previous_school_id
+            or next_other_school_name != previous_other_school_name
+            or next_batch_year != previous_batch_year
+            or next_alumni_id != previous_alumni_id
+        )
+        notification_changed = (
+            status_changed
+            or recipient_changed
+            or event_changed
+            or affiliation_changed
+        )
         save_kwargs = {}
 
         if status_changed:

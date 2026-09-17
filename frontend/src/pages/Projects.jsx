@@ -1,18 +1,14 @@
 /** @format */
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { projectService } from '../services/api';
+import useCurrentUser from '../hooks/useCurrentUser';
 import {
-  Briefcase,
-  Heart,
-  BookOpen,
-  Users,
   ArrowRight,
   Plus,
   Target,
   TrendingUp,
   CheckCircle2,
-  MessageSquare,
   Upload,
   X,
 } from 'lucide-react';
@@ -21,7 +17,7 @@ import { Link } from 'react-router-dom';
 const Projects = () => {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const { isAuthenticated } = useCurrentUser();
   const [showModal, setShowOpenModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -34,24 +30,32 @@ const Projects = () => {
   const [image, setImage] = useState(null);
 
   useEffect(() => {
-    fetchProjects();
-    const token = localStorage.getItem('access_token');
-    setIsLoggedIn(!!token);
+    const loadProjects = async () => {
+      try {
+        const response = await projectService.getAll();
+        setProjects(response.data);
+      } catch (err) {
+        console.error('Error fetching projects:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadProjects();
   }, []);
 
-  const fetchProjects = async () => {
-    try {
-      const response = await projectService.getAll();
-      setProjects(response.data);
-    } catch (err) {
-      console.error('Error fetching projects:', err);
-    } finally {
-      setLoading(false);
-    }
+  const refreshProjects = async () => {
+    const response = await projectService.getAll();
+    setProjects(response.data);
   };
 
   const handlePropose = async (e) => {
     e.preventDefault();
+    if (!isAuthenticated) {
+      setShowOpenModal(false);
+      return;
+    }
+
     setSubmitting(true);
     const data = new FormData();
     Object.keys(formData).forEach((key) => data.append(key, formData[key]));
@@ -60,7 +64,7 @@ const Projects = () => {
     try {
       await projectService.create(data);
       setShowOpenModal(false);
-      fetchProjects();
+      await refreshProjects();
       setFormData({
         title: '',
         description: '',
@@ -68,7 +72,7 @@ const Projects = () => {
         goal_amount: '',
       });
       setImage(null);
-    } catch (err) {
+    } catch {
       alert('Failed to propose project.');
     } finally {
       setSubmitting(false);
@@ -108,7 +112,7 @@ const Projects = () => {
           <h2 className='text-3xl font-black text-primary uppercase tracking-tight'>
             Active Initiatives
           </h2>
-          {isLoggedIn && (
+          {isAuthenticated && (
             <button
               onClick={() => setShowOpenModal(true)}
               className='bg-secondary text-primary px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-2 hover:bg-yellow-400 transition-all shadow-xl'>
@@ -183,7 +187,7 @@ const Projects = () => {
         )}
 
         {/* Modal for Proposing Project */}
-        {showModal && (
+        {isAuthenticated && showModal && (
           <div className='fixed inset-0 z-[110] flex items-center justify-center p-4 bg-primary/40 backdrop-blur-sm animate-in fade-in'>
             <div className='bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden relative'>
               <button
@@ -303,15 +307,13 @@ const Projects = () => {
                 the wider community? We provide the platform and network to
                 bring meaningful initiatives to life.
               </p>
-              <button
-                onClick={() =>
-                  isLoggedIn
-                    ? setShowOpenModal(true)
-                    : alert('Please login to propose a project.')
-                }
-                className='bg-secondary text-primary px-12 py-5 rounded-full font-black uppercase tracking-widest text-xs hover:bg-yellow-400 transition-all w-fit shadow-2xl'>
-                Start an Initiative
-              </button>
+              {isAuthenticated && (
+                <button
+                  onClick={() => setShowOpenModal(true)}
+                  className='bg-secondary text-primary px-12 py-5 rounded-full font-black uppercase tracking-widest text-xs hover:bg-yellow-400 transition-all w-fit shadow-2xl'>
+                  Start an Initiative
+                </button>
+              )}
             </div>
             <div className='bg-blue-900/50 backdrop-blur-md flex items-center justify-center p-12 md:p-20 border-l border-white/5'>
               <div className='grid grid-cols-1 md:grid-cols-2 gap-12 text-center w-full'>

@@ -1,6 +1,6 @@
 /** @format */
 
-import React from 'react';
+import { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
@@ -31,6 +31,8 @@ import Cart from './pages/Cart';
 import Checkout from './pages/Checkout';
 import OrderSuccess from './pages/OrderSuccess';
 
+const Induction = lazy(() => import('./pages/Induction'));
+
 function App() {
   return (
     <Router>
@@ -39,6 +41,21 @@ function App() {
         <main className='flex-grow'>
           <Routes>
             <Route path='/' element={<Home />} />
+            <Route
+              path='/induction'
+              element={
+                <Suspense
+                  fallback={
+                    <div
+                      role='status'
+                      className='flex min-h-[60vh] items-center justify-center bg-primary px-4 text-center font-bold text-white'>
+                      Loading the induction page…
+                    </div>
+                  }>
+                  <Induction />
+                </Suspense>
+              }
+            />
             <Route path='/about' element={<About />} />
             <Route path='/alumni' element={<Directory />} />
             <Route path='/alumni/:id' element={<AlumniDetail />} />
@@ -57,7 +74,6 @@ function App() {
               path='/blog/edit/:slug'
               element={<BlogForm isEdit={true} />}
             />
-            <Route path='/events' element={<Events />} />
             <Route path='/projects' element={<Projects />} />
             <Route path='/projects/:id' element={<ProjectDetail />} />
             <Route path='/donations' element={<Donations />} />

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { contactService } from '../services/api';
 import { Mail, MapPin, Phone, Send, CheckCircle } from 'lucide-react';
 
@@ -10,21 +10,37 @@ const Contact = () => {
   });
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    setFormData((current) => ({
+      ...current,
+      [e.target.name]: e.target.value,
+    }));
+    setErrorMessage('');
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setErrorMessage('');
     setLoading(true);
     try {
-      await contactService.sendMessage(formData);
+      await contactService.sendMessage({
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        message: formData.message.trim(),
+      });
       setSubmitted(true);
       setFormData({ name: '', email: '', message: '' });
     } catch (error) {
-      console.error("Error sending message:", error);
-      alert("Failed to send message. Please try again later.");
+      const responseData = error.response?.data;
+      const validationMessage = responseData && typeof responseData === 'object'
+        ? Object.values(responseData).flat().find((value) => typeof value === 'string')
+        : null;
+
+      setErrorMessage(
+        validationMessage || 'We could not send your message. Please try again.',
+      );
     } finally {
       setLoading(false);
     }
@@ -100,6 +116,14 @@ const Contact = () => {
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-6">
+                {errorMessage && (
+                  <div
+                    role="alert"
+                    className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                  >
+                    {errorMessage}
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-2">Name</label>
                   <input

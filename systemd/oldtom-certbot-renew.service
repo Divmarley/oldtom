@@ -1,0 +1,10 @@
+[Unit]
+Description=Renew the Old Toms Let's Encrypt certificate
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/oldtom/app
+ExecStart=/usr/bin/docker compose --project-name oldtom --env-file /opt/oldtom/oldtom.env -f docker-compose.yml -f docker-compose.production.yml --profile certbot run --rm certbot-renew
+ExecStartPost=/usr/bin/docker compose --project-name oldtom --env-file /opt/oldtom/oldtom.env -f docker-compose.yml -f docker-compose.production.yml exec -T nginx nginx -s reload
