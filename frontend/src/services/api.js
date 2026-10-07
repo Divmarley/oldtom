@@ -23,6 +23,7 @@ api.interceptors.request.use(
 export const authService = {
   register: (data) => api.post('/auth/register/', data),
   login: (data) => api.post('/auth/login/', data),
+  googleSignIn: (data) => api.post('/auth/google/', data, { skipAuth: true }),
   refresh: (refresh) => api.post('/auth/refresh/', { refresh }),
   getCurrentUser: () => api.get('/auth/me/'),
   getProfile: () => api.get('/auth/profile/'),

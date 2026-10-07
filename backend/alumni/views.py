@@ -47,13 +47,12 @@ class RegisterUserView(APIView):
 
         try:
             with transaction.atomic():
+                # Create an inactive user; admin must verify/activate
                 user = serializer.save()
-                Alumni.objects.create(
-                    user=user,
-                    name=user.username,
-                    email=user.email,
-                )
-                schedule_welcome_email(user.pk)
+                user.is_active = False
+                user.save(update_fields=['is_active'])
+                # Do NOT auto-create an Alumni profile yet. Admin will verify
+                # and associate an Alumni profile when approving the account.
         except IntegrityError as exc:
             raise ValidationError(
                 {
@@ -65,6 +64,69 @@ class RegisterUserView(APIView):
             ) from exc
 
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
+
+
+class GoogleSignInView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        id_token = request.data.get('id_token')
+        if not id_token:
+            raise ValidationError({'id_token': 'ID token is required.'})
+
+        # Verify token with Google's tokeninfo endpoint
+        import requests
+
+        tokeninfo_url = 'https://oauth2.googleapis.com/tokeninfo'
+        resp = requests.get(tokeninfo_url, params={'id_token': id_token}, timeout=5)
+        if resp.status_code != 200:
+            raise ValidationError({'id_token': 'Invalid Google ID token.'})
+
+        info = resp.json()
+        email = info.get('email')
+        email_verified = info.get('email_verified') in ('true', True, '1')
+        name = info.get('name') or info.get('given_name') or ''
+
+        if not email or not email_verified:
+            raise ValidationError({'detail': 'Google account email not verified.'})
+
+        # Existing user?
+        try:
+            user = User.objects.get(email__iexact=email)
+        except User.DoesNotExist:
+            # Create inactive user pending admin approval. Ensure unique username.
+            base = (email.split('@')[0] or 'user').strip()
+            username = base
+            counter = 1
+            while User.objects.filter(username=username).exists():
+                counter += 1
+                username = f"{base}{counter}"
+
+            user = User.objects.create_user(username=username, email=email)
+            user.is_active = False
+            user.save(update_fields=['is_active'])
+
+        # If user is not active, return pending status.
+        if not user.is_active:
+            return Response({'status': 'pending_verification', 'message': 'Account pending admin verification.'}, status=status.HTTP_200_OK)
+
+        # Issue JWT tokens for active users using SimpleJWT serializers
+        from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
+        token_serializer = TokenObtainPairSerializer(data={'email': user.email, 'password': ''})
+        # TokenObtainPairSerializer expects credentials; instead create tokens directly
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        refresh = RefreshToken.for_user(user)
+        return Response(
+            {
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+                'status': 'active',
+            },
+            status=status.HTTP_200_OK,
+        )
 
 @api_view(['GET', 'PUT'])
 @permission_classes([IsAuthenticated])

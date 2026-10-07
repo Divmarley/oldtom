@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { authService } from '../services/api';
+// import { Google } from 'lucide-react';
 import {
   CheckCircle,
   Lock,
@@ -37,6 +38,39 @@ const Login = () => {
       setError('Invalid username or password. Please try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGoogle = async () => {
+    try {
+      /* global google */
+      const client = window.google?.accounts?.id;
+      if (!client) {
+        setError('Google Identity not loaded.');
+        return;
+      }
+
+      client.prompt();
+      client.initialize({
+        client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+        callback: async (resp) => {
+          const id_token = resp.credential;
+          try {
+            const result = await authService.googleSignIn({ id_token });
+            if (result.data.status === 'pending_verification') {
+              setError('Account pending admin verification.');
+            } else if (result.data.access) {
+              localStorage.setItem('access_token', result.data.access);
+              localStorage.setItem('refresh_token', result.data.refresh);
+              navigate('/profile', { replace: true });
+            }
+          } catch (err) {
+            setError('Google sign-in failed.');
+          }
+        },
+      });
+    } catch (err) {
+      setError('Google sign-in failed.');
     }
   };
 
@@ -79,7 +113,7 @@ const Login = () => {
                   required
                   value={formData.username}
                   onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                  className="w-full bg-gray-50 border-0 rounded-2xl pl-12 pr-6 py-4 focus:ring-2 focus:ring-primary outline-none transition-all"
+                  className="w-full bg-gray-50 border-0 rounded-2xl pl-12 pr-6 py-2 focus:ring-2 focus:ring-primary outline-none transition-all"
                   placeholder="Enter username"
                 />
               </div>
@@ -94,7 +128,7 @@ const Login = () => {
                   required
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className="w-full bg-gray-50 border-0 rounded-2xl pl-12 pr-6 py-4 focus:ring-2 focus:ring-primary outline-none transition-all"
+                  className="w-full bg-gray-50 border-0 rounded-2xl pl-12 pr-6 py-2 focus:ring-2 focus:ring-primary outline-none transition-all"
                   placeholder="••••••••"
                 />
               </div>
@@ -103,7 +137,7 @@ const Login = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-primary text-white py-5 rounded-2xl font-black text-xl hover:shadow-2xl hover:shadow-primary/20 hover:-translate-y-1 transition-all flex items-center justify-center space-x-3 disabled:opacity-70 disabled:transform-none"
+              className="w-full bg-primary text-white py-2 rounded-2xl font-black text-xl hover:shadow-2xl hover:shadow-primary/20 hover:-translate-y-1 transition-all flex items-center justify-center space-x-3 disabled:opacity-70 disabled:transform-none"
             >
               {loading ? (
                 <div className="h-6 w-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -115,6 +149,16 @@ const Login = () => {
               )}
             </button>
           </form>
+
+          <div className="mt-6">
+            <button
+              onClick={handleGoogle}
+              className="w-full border border-gray-200 rounded-2xl py-3 flex items-center justify-center gap-3 hover:shadow-sm"
+            >
+              {/* <Google className="h-5 w-5" /> */}
+              <span>Continue with Google</span>
+            </button>
+          </div>
 
           <div className="mt-8 text-center">
             <p className="text-gray-500 text-sm">

@@ -12,6 +12,7 @@ class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=False)
     email = serializers.EmailField(required=True)
     is_staff = serializers.BooleanField(read_only=True)
+    is_active = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = User
@@ -23,6 +24,7 @@ class UserSerializer(serializers.ModelSerializer):
 
         if request and request.user.is_authenticated and request.user.is_staff:
             fields['is_staff'].read_only = False
+            fields['is_active'].read_only = False
 
         return fields
 
@@ -50,6 +52,9 @@ class UserSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         is_staff = validated_data.pop('is_staff', False)
         user = User.objects.create_user(**validated_data)
+        # New users are inactive until admin verifies them
+        user.is_active = False
+        user.save(update_fields=['is_active'])
 
         if is_staff:
             user.is_staff = True
@@ -77,6 +82,15 @@ class UserSerializer(serializers.ModelSerializer):
                 and request.user.is_staff
             ):
                 instance.is_staff = is_staff
+
+            # Admin can toggle active status via user update
+            if (
+                'is_active' in validated_data
+                and request
+                and request.user.is_authenticated
+                and request.user.is_staff
+            ):
+                instance.is_active = validated_data.get('is_active')
 
             instance.save()
             profile = getattr(instance, 'alumni_profile', None)

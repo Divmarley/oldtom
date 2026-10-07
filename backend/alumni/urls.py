@@ -14,6 +14,7 @@ from .views import (
     current_user,
     UserViewSet,
     EmailTokenObtainPairView,
+    GoogleSignInView,
 )
 from .views import ProductViewSet, OrderViewSet, ShippingOptionViewSet
 
@@ -34,6 +35,7 @@ urlpatterns = [
     path('', include(router.urls)),
     path('auth/register/', RegisterUserView.as_view(), name='register'),
     path('auth/login/', EmailTokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('auth/google/', GoogleSignInView.as_view(), name='google_signin'),
     path('auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('auth/profile/', user_profile, name='profile'),
     path('auth/me/', current_user, name='current_user'),
