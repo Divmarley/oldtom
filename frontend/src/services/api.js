@@ -51,11 +51,17 @@ export const eventService = {
   getRegistrationOptions: () => api.get('/event-registration/options/'),
   getByName: async (identifier) => {
     const response = await api.get('/events/', { skipAuth: true });
-    const normalizedIdentifier = String(identifier || '').trim().toLowerCase();
+    const normalizedIdentifier = String(identifier || '')
+      .trim()
+      .toLowerCase();
 
     const event = response.data.find((item) => {
-      const title = String(item.title || '').trim().toLowerCase();
-      const eventName = String(item.name || '').trim().toLowerCase();
+      const title = String(item.title || '')
+        .trim()
+        .toLowerCase();
+      const eventName = String(item.name || '')
+        .trim()
+        .toLowerCase();
       return (
         String(item.id) === normalizedIdentifier ||
         title === normalizedIdentifier ||

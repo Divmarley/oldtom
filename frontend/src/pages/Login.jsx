@@ -1,14 +1,10 @@
+/** @format */
+
 import { useState } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { authService } from '../services/api';
 // import { Google } from 'lucide-react';
-import {
-  CheckCircle,
-  Lock,
-  User,
-  ArrowRight,
-  ShieldCheck,
-} from 'lucide-react';
+import { CheckCircle, Lock, User, ArrowRight, ShieldCheck } from 'lucide-react';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -75,95 +71,105 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#f9fafb] flex items-center justify-center p-4">
-      <div className="max-w-md w-full">
-        <div className="bg-white rounded-3xl shadow-2xl p-10 border border-gray-100">
-          <div className="text-center mb-10">
-            <div className="bg-primary/10 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6">
-              <ShieldCheck className="h-10 w-10 text-primary" />
+    <div className='min-h-screen bg-[#f9fafb] flex items-center justify-center p-4'>
+      <div className='max-w-md w-full'>
+        <div className='bg-white rounded-3xl shadow-2xl p-10 border border-gray-100'>
+          <div className='text-center mb-10'>
+            <div className='bg-primary/10 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6'>
+              <ShieldCheck className='h-10 w-10 text-primary' />
             </div>
-            <h1 className="text-3xl font-black text-primary uppercase tracking-tight">Member Login</h1>
-            <p className="text-gray-500 mt-2">Access your Old Toms profile</p>
+            <h1 className='text-3xl font-black text-primary uppercase tracking-tight'>
+              Member Login
+            </h1>
+            <p className='text-gray-500 mt-2'>Access your Old Toms profile</p>
           </div>
 
           {error && (
-            <div className="bg-red-50 text-red-600 p-4 rounded-xl mb-6 text-sm font-medium border border-red-100">
+            <div className='bg-red-50 text-red-600 p-4 rounded-xl mb-6 text-sm font-medium border border-red-100'>
               {error}
             </div>
           )}
 
           {location.state?.registrationComplete && (
-            <div className="bg-green-50 text-green-700 p-4 rounded-xl mb-6 text-sm font-medium border border-green-100 flex items-start gap-3">
-              <CheckCircle className="h-5 w-5 shrink-0 mt-0.5" />
+            <div className='bg-green-50 text-green-700 p-4 rounded-xl mb-6 text-sm font-medium border border-green-100 flex items-start gap-3'>
+              <CheckCircle className='h-5 w-5 shrink-0 mt-0.5' />
               <span>
-                Welcome! Your account is ready. A welcome message is on its way to{' '}
-                <strong>{location.state.registeredEmail}</strong>. Sign in to
+                Welcome! Your account is ready. A welcome message is on its way
+                to <strong>{location.state.registeredEmail}</strong>. Sign in to
                 complete your alumni profile.
               </span>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className='space-y-6'>
             <div>
-              <label className="block text-gray-700 font-bold mb-2 uppercase text-xs tracking-widest">Username</label>
-              <div className="relative">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <label className='block text-gray-700 font-bold mb-2 uppercase text-xs tracking-widest'>
+                Username
+              </label>
+              <div className='relative'>
+                <User className='absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400' />
                 <input
-                  type="text"
+                  type='text'
                   required
                   value={formData.username}
-                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                  className="w-full bg-gray-50 border-0 rounded-2xl pl-12 pr-6 py-2 focus:ring-2 focus:ring-primary outline-none transition-all"
-                  placeholder="Enter username"
+                  onChange={(e) =>
+                    setFormData({ ...formData, username: e.target.value })
+                  }
+                  className='w-full bg-gray-50 border-0 rounded-2xl pl-12 pr-6 py-2 focus:ring-2 focus:ring-primary outline-none transition-all'
+                  placeholder='Enter username'
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-gray-700 font-bold mb-2 uppercase text-xs tracking-widest">Password</label>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <label className='block text-gray-700 font-bold mb-2 uppercase text-xs tracking-widest'>
+                Password
+              </label>
+              <div className='relative'>
+                <Lock className='absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400' />
                 <input
-                  type="password"
+                  type='password'
                   required
                   value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className="w-full bg-gray-50 border-0 rounded-2xl pl-12 pr-6 py-2 focus:ring-2 focus:ring-primary outline-none transition-all"
-                  placeholder="••••••••"
+                  onChange={(e) =>
+                    setFormData({ ...formData, password: e.target.value })
+                  }
+                  className='w-full bg-gray-50 border-0 rounded-2xl pl-12 pr-6 py-2 focus:ring-2 focus:ring-primary outline-none transition-all'
+                  placeholder='••••••••'
                 />
               </div>
             </div>
 
             <button
-              type="submit"
+              type='submit'
               disabled={loading}
-              className="w-full bg-primary text-white py-2 rounded-2xl font-black text-xl hover:shadow-2xl hover:shadow-primary/20 hover:-translate-y-1 transition-all flex items-center justify-center space-x-3 disabled:opacity-70 disabled:transform-none"
-            >
+              className='w-full bg-primary text-white py-2 rounded-2xl font-black text-xl hover:shadow-2xl hover:shadow-primary/20 hover:-translate-y-1 transition-all flex items-center justify-center space-x-3 disabled:opacity-70 disabled:transform-none'>
               {loading ? (
-                <div className="h-6 w-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <div className='h-6 w-6 border-2 border-white border-t-transparent rounded-full animate-spin'></div>
               ) : (
                 <>
                   <span>Sign In</span>
-                  <ArrowRight className="h-6 w-6" />
+                  <ArrowRight className='h-6 w-6' />
                 </>
               )}
             </button>
           </form>
 
-          <div className="mt-6">
+          <div className='mt-6'>
             <button
               onClick={handleGoogle}
-              className="w-full border border-gray-200 rounded-2xl py-3 flex items-center justify-center gap-3 hover:shadow-sm"
-            >
+              className='w-full border border-gray-200 rounded-2xl py-3 flex items-center justify-center gap-3 hover:shadow-sm'>
               {/* <Google className="h-5 w-5" /> */}
               <span>Continue with Google</span>
             </button>
           </div>
 
-          <div className="mt-8 text-center">
-            <p className="text-gray-500 text-sm">
+          <div className='mt-8 text-center'>
+            <p className='text-gray-500 text-sm'>
               Don't have an account?{' '}
-              <Link to="/register" className="text-primary font-bold hover:underline">
+              <Link
+                to='/register'
+                className='text-primary font-bold hover:underline'>
                 Register here
               </Link>
             </p>
